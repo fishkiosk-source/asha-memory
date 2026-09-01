@@ -645,7 +645,7 @@ Open in any browser — no server required:
 Implemented in v2 (see `docs/V2_ARCHITECTURE.md:3` for the full status note):
 
 * Done: TF-IDF semantic search, cosine consolidation, sentiment-weighted contradictions, tiered layers, `SEMANTIC/PATH/CLUSTER/TIMELINE`, cross-agent queries, Query DSL, LRU cache, JSON/GraphML export, profile/health, internal clock
-* Not implemented (intentionally deferred): optional local ONNX vectors, middleware hooks, `remember_many` batch insert, incremental DF counters (rebuilt on demand), agent-shard merging, cluster auto-summarization (removed as graph pollution — `brain/README.md:169`).
+* Not implemented (intentionally deferred): optional local ONNX vectors, middleware hooks, `remember_many` batch insert, incremental DF counters (rebuilt on demand), agent-shard merging, cluster auto-summarization (removed as graph pollution — `brain/README-BRAIN.md:169`).
 
 ---
 
