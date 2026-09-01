@@ -1,0 +1,29 @@
+{
+  "last_db_path": "D:\\opencode\\memory\\v2\\memory_testing\\core.db",
+  "cron_enabled": false,
+  "interval_minutes": 60,
+  "auto_snapshot_before_jobs": false,
+  "dedup_similarity_threshold": 0.85,
+  "prune_importance_floor": 0.05,
+  "auto_rebuild_vectors": true,
+  "max_unused_days": 4,
+  "ephemeral_labels": [
+    "FEED_SNAPSHOT",
+    "RUNTIME_SAMPLE",
+    "TIME_ENTRY",
+    "DAILY_STATE",
+    "CRON_SUPERVISOR_REPORT",
+    "BRAIN_MAINTENANCE_REPORT",
+    "BRAIN_HISTORY",
+    "SOVEREIGNTY_PHASE_RUN"
+  ],
+  "ephemeral_keep_last": 3,
+  "ephemeral_max_age_days": 7,
+  "ephemeral_min_importance": 0.6,
+  "vacuum_after_prune": true,
+  "vacuum_freelist_threshold_pct": 15,
+  "vacuum_freelist_min_pages": 50,
+  "contradiction_auto_resolve": true,
+  "contradiction_low_trust": 0.3,
+  "contradiction_high_trust": 0.8
+}

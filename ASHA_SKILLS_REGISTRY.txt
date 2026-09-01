@@ -1,0 +1,347 @@
+# ASHA SKILLS REGISTRY v2
+# =======================
+# Machine-readable skill registry for ASHA_MEMORY_SYSTEM v2.
+# Loaded via AshaMemory.load_skill_registry() (53 skills, 8 categories).
+#
+# Format:
+#   [[CATEGORY:NAME]] Domain:<domain>
+#   [SKILL_NAME]
+#   DESC: <description>
+#   LEVEL: CORE_ONLY | ASSIGNABLE | AGENT_AUTO | AGENT_ONLY
+#   ASHA:  <how the main AI core uses this skill>
+#   AGENT: <how worker agents use this skill>
+#
+# Levels:
+#   CORE_ONLY  [CORE]  built-in, always available to the core
+#   ASSIGNABLE [ASN]   core assigns to agents
+#   AGENT_AUTO [AUTO]  agent auto-grants on spawn
+#   AGENT_ONLY [AGENT] agent self-registers
+#
+# Derived from documentation/SKILLS/CORESKILLS.md and AGENTSKILLS.md
+# (the original v1 registry was split into those two operating guides).
+
+[[CATEGORY:CORE_OPERATIONS]] Domain:Core
+[INIT]
+DESC: Initialize the core engine and its subsystems.
+LEVEL: CORE_ONLY
+ASHA: Bootstrap the memory system and verify schema.
+AGENT: Not available to agents.
+
+[SHUTDOWN]
+DESC: Gracefully shut down the core engine.
+LEVEL: CORE_ONLY
+ASHA: Persist state, flush caches, close databases cleanly.
+AGENT: Not available to agents.
+
+[RECOVER]
+DESC: Recover from a failed operation or corrupted state.
+LEVEL: CORE_ONLY
+ASHA: Restore from snapshot or reinitialize after failure.
+AGENT: Not available to agents.
+
+[GET_STATUS]
+DESC: Report current system status and configuration.
+LEVEL: CORE_ONLY
+ASHA: Surface health, profile, and stats to the operator.
+AGENT: Not available to agents.
+
+[PERSIST]
+DESC: Persist the memory graph to storage.
+LEVEL: CORE_ONLY
+ASHA: Commit nodes, edges, vectors, and layers durably.
+AGENT: Not available to agents.
+
+[MIGRATE]
+DESC: Migrate database schema and data between versions.
+LEVEL: CORE_ONLY
+ASHA: Run v1-to-v2 migrations and lexicon rebuilds.
+AGENT: Not available to agents.
+
+[BACKUP]
+DESC: Create a backup of the memory graph.
+LEVEL: CORE_ONLY
+ASHA: Export JSON/GraphML snapshots or tar archives.
+AGENT: Not available to agents.
+
+[RESTORE]
+DESC: Restore memory from a backup.
+LEVEL: CORE_ONLY
+ASHA: Import archives and roll back to snapshots.
+AGENT: Not available to agents.
+
+[CONFIG_UPDATE]
+DESC: Read and update system configuration.
+LEVEL: CORE_ONLY
+ASHA: Merge config.json overrides and persist changes.
+AGENT: Not available to agents.
+
+[HEALTH_CHECK]
+DESC: Run integrity checks over the whole system.
+LEVEL: CORE_ONLY
+ASHA: Detect orphaned edges, stale vectors, schema drift.
+AGENT: Not available to agents.
+
+[ORCHESTRATE]
+DESC: Coordinate worker agents and maintenance jobs.
+LEVEL: CORE_ONLY
+ASHA: Spawn agents, schedule brain jobs, review findings.
+AGENT: Not available to agents.
+
+[[CATEGORY:COMMUNICATION]] Domain:Agents
+[SEND_MESSAGE]
+DESC: Send a message to another entity.
+LEVEL: ASSIGNABLE
+ASHA: Route core directives to agents.
+AGENT: Report findings or requests back to the core.
+
+[RECEIVE_MESSAGE]
+DESC: Receive and interpret an incoming message.
+LEVEL: ASSIGNABLE
+ASHA: Ingest agent submissions and review-ready notes.
+AGENT: Read directives from the core.
+
+[BROADCAST]
+DESC: Broadcast a message to all agents.
+LEVEL: ASSIGNABLE
+ASHA: Publish global announcements and policy changes.
+AGENT: Share a finding with the whole agent pool.
+
+[DIRECT_REPLY]
+DESC: Reply directly to a specific sender.
+LEVEL: ASSIGNABLE
+ASHA: Answer an agent's question with a targeted response.
+AGENT: Answer a peer agent's direct question.
+
+[ROUTE_MESSAGE]
+DESC: Route a message to the appropriate recipient.
+LEVEL: ASSIGNABLE
+ASHA: Dispatch tasks to the right agent scope.
+AGENT: Forward a note to the agent that owns the topic.
+
+[LOG_ACTIVITY]
+DESC: Log an activity event to the memory graph.
+LEVEL: ASSIGNABLE
+ASHA: Record core-level operations as EVENT nodes.
+AGENT: Log task progress as agent-scoped notes.
+
+[REPORT_STATUS]
+DESC: Report status to the requester.
+LEVEL: ASSIGNABLE
+ASHA: Answer health/profile/stats queries.
+AGENT: Report task completion state.
+
+[[CATEGORY:MEMORY]] Domain:Memory
+[STORE]
+DESC: Store a memory node in the graph.
+LEVEL: AGENT_AUTO
+ASHA: Store verified facts and preferences in core memory.
+AGENT: Store working notes in the agent scope.
+
+[RECALL]
+DESC: Retrieve memories by query.
+LEVEL: AGENT_AUTO
+ASHA: Run SEMANTIC, WHO_IS, WHAT_ABOUT, RELATED, RECENT, PATH queries.
+AGENT: Recall relevant notes before acting.
+
+[FORGET]
+DESC: Remove or prune a memory node.
+LEVEL: AGENT_AUTO
+ASHA: Delete low-value nodes and manage decay.
+AGENT: Clear obsolete working notes.
+
+[QUERY_LINKS]
+DESC: Query the graph structure around nodes.
+LEVEL: AGENT_AUTO
+ASHA: Explore edges, clusters, and paths in core memory.
+AGENT: Inspect edges around the agent's notes.
+
+[AGENT_NOTE]
+DESC: Draft an agent-scoped private note.
+LEVEL: AGENT_AUTO
+ASHA: Read agent notes through explicit agent search only.
+AGENT: Draft raw observations without polluting core recall.
+
+[SUBMIT_REVIEW]
+DESC: Submit a finding for core review.
+LEVEL: AGENT_AUTO
+ASHA: Read the review queue and promote findings in place.
+AGENT: Mark a verified finding review_ready.
+
+[CROSS_AGENT_SEARCH]
+DESC: Search notes across all agents.
+LEVEL: AGENT_AUTO
+ASHA: Run find_across_agents and digest raw findings.
+AGENT: Search peer notes when scopes overlap.
+
+[[CATEGORY:REASONING]] Domain:Reasoning
+[LOGICAL_REASON]
+DESC: Apply logical reasoning to a problem.
+LEVEL: AGENT_AUTO
+ASHA: Validate conclusions against stored facts.
+AGENT: Reason about task inputs before acting.
+
+[ANALYZE]
+DESC: Analyze data or text for insight.
+LEVEL: AGENT_AUTO
+ASHA: Analyze graph composition and query performance.
+AGENT: Analyze raw data in the working scope.
+
+[DECOMPOSE]
+DESC: Break a complex task into subtasks.
+LEVEL: AGENT_AUTO
+ASHA: Decompose maintenance plans into job steps.
+AGENT: Decompose assigned tasks into note-sized steps.
+
+[COMPARE]
+DESC: Compare two pieces of information.
+LEVEL: AGENT_AUTO
+ASHA: Compare node contents and detect similarities.
+AGENT: Compare observations across sources.
+
+[INFER]
+DESC: Infer new relations between known facts.
+LEVEL: AGENT_AUTO
+ASHA: Suggest RELATES_TO and SUPPORTS edges.
+AGENT: Infer implications of the agent's findings.
+
+[SYNTHESIZE]
+DESC: Combine multiple sources into a coherent view.
+LEVEL: AGENT_AUTO
+ASHA: Merge agent findings into core summaries.
+AGENT: Combine observations into a review-ready note.
+
+[VERIFY]
+DESC: Verify a claim against stored knowledge.
+LEVEL: AGENT_AUTO
+ASHA: Cross-check facts and flag contradictions.
+AGENT: Verify a finding before marking review_ready.
+
+[[CATEGORY:LEARNING]] Domain:Learning
+[OBSERVE]
+DESC: Record an observation from experience.
+LEVEL: ASSIGNABLE
+ASHA: Turn verified observations into core memories.
+AGENT: Capture raw observations as private notes.
+
+[PATTERN_RECOG]
+DESC: Recognize patterns across data and time.
+LEVEL: ASSIGNABLE
+ASHA: Detect recurring structures in the memory graph.
+AGENT: Recognize cyclical patterns in assigned data.
+
+[UPDATE_MODEL]
+DESC: Update an internal model from new evidence.
+LEVEL: ASSIGNABLE
+ASHA: Adjust trust and importance after review.
+AGENT: Refine the agent's mental model of the task.
+
+[MEMORIZE_FACT]
+DESC: Commit a learned fact to memory.
+LEVEL: ASSIGNABLE
+ASHA: Promote review-ready notes to core facts.
+AGENT: Propose facts through the review pipeline.
+
+[FORGET_NOISE]
+DESC: Discard low-signal information.
+LEVEL: ASSIGNABLE
+ASHA: Run PRUNE and decay management.
+AGENT: Delete stale scratchpad notes.
+
+[ADAPT_PREFERENCE]
+DESC: Adapt behavior from observed preferences.
+LEVEL: ASSIGNABLE
+ASHA: Store and refine user preference nodes.
+AGENT: Adapt to task-level preferences.
+
+[LEARN_FEEDBACK]
+DESC: Learn from feedback on prior work.
+LEVEL: ASSIGNABLE
+ASHA: Incorporate review outcomes into core knowledge.
+AGENT: Incorporate core feedback into future notes.
+
+[[CATEGORY:CREATIVITY]] Domain:Creativity
+[GENERATE_TEXT]
+DESC: Generate novel text content.
+LEVEL: AGENT_ONLY
+ASHA: Not required for core operation.
+AGENT: Draft reports, summaries, and candidate content.
+
+[REMIX]
+DESC: Remix existing content into new forms.
+LEVEL: AGENT_ONLY
+ASHA: Not required for core operation.
+AGENT: Repurpose prior notes into new deliverables.
+
+[EXPLORE]
+DESC: Explore new topics and avenues.
+LEVEL: AGENT_ONLY
+ASHA: Not required for core operation.
+AGENT: Explore open-ended questions in the working scope.
+
+[HYPOTHESIZE]
+DESC: Form testable hypotheses.
+LEVEL: AGENT_ONLY
+ASHA: Not required for core operation.
+AGENT: Hypothesize about patterns before verification.
+
+[BRAINSTORM]
+DESC: Generate multiple candidate ideas.
+LEVEL: AGENT_ONLY
+ASHA: Not required for core operation.
+AGENT: Brainstorm solution options for a task.
+
+[[CATEGORY:EXECUTION]] Domain:Execution
+[EXECUTE_CODE]
+DESC: Execute code in a controlled environment.
+LEVEL: ASSIGNABLE
+ASHA: Run maintenance and migration scripts.
+AGENT: Run task code under the core's boundary rules.
+
+[RUN_QUERY]
+DESC: Run a database or DSL query.
+LEVEL: ASSIGNABLE
+ASHA: Run maintenance queries against the graph.
+AGENT: Run scoped queries against the agent's data.
+
+[FILE_OPS]
+DESC: Perform file system operations.
+LEVEL: ASSIGNABLE
+ASHA: Manage exports, logs, and backups on disk.
+AGENT: Manage task files within allowed paths.
+
+[SCRIPT_RUN]
+DESC: Run a prepared script end to end.
+LEVEL: ASSIGNABLE
+ASHA: Execute scheduled brain scripts.
+AGENT: Execute approved task scripts.
+
+[SCHEDULE_JOB]
+DESC: Schedule a recurring job.
+LEVEL: ASSIGNABLE
+ASHA: Schedule brain maintenance intervals.
+AGENT: Schedule periodic checks within the task.
+
+[[CATEGORY:META]] Domain:Meta
+[REFLECT]
+DESC: Reflect on past actions and outcomes.
+LEVEL: AGENT_ONLY
+ASHA: Not required for core operation.
+AGENT: Reflect on completed tasks before submitting.
+
+[PLAN]
+DESC: Plan a sequence of actions.
+LEVEL: AGENT_ONLY
+ASHA: Not required for core operation.
+AGENT: Plan task steps before execution.
+
+[SELF_MODIFY]
+DESC: Adjust one's own behavior and rules.
+LEVEL: AGENT_ONLY
+ASHA: Not required for core operation.
+AGENT: Adjust the agent's own working habits.
+
+[AUDIT_SELF]
+DESC: Audit one's own notes and decisions.
+LEVEL: AGENT_ONLY
+ASHA: Not required for core operation.
+AGENT: Review own notes for quality before submission.

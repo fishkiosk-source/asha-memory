@@ -1,0 +1,1852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASHA Memory Manager</title>
+<script src="https://cdn.jsdelivr.net/npm/sql.js@1.11.0/dist/sql-wasm.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,'Segoe UI',monospace;background:#0d0d0d;color:#c0c0c0;height:100vh;display:flex;flex-direction:column}
+header{background:#1a1a1a;border-bottom:1px solid #333;padding:12px 20px;display:flex;align-items:center;gap:14px;flex-shrink:0}
+h1{font-size:16px;font-weight:600;color:#e0e0e0;letter-spacing:0.5px}
+h1 span{color:#888;font-weight:400}
+.dirty-dot{width:9px;height:9px;border-radius:50%;background:#444;display:inline-block;transition:background .2s}
+.dirty-dot.on{background:#ea6;box-shadow:0 0 6px #ea6}
+.file-area{display:flex;align-items:center;gap:10px;margin-left:auto}
+.file-label{background:#2a2a2a;border:1px solid #444;color:#ccc;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:13px}
+.file-label:hover{background:#333;border-color:#666}
+.btn{background:#2a2a2a;border:1px solid #444;color:#ccc;padding:5px 12px;border-radius:3px;cursor:pointer;font-size:12px;font-family:inherit}
+.btn:hover{background:#333;border-color:#666}
+.btn.primary{background:#1a3a5a;border-color:#2a5a8a;color:#8bf}
+.btn.primary:hover{background:#1d4468}
+.btn.danger{background:#3a1a1a;border-color:#5a2a2a;color:#e88}
+.btn.danger:hover{background:#4a2020}
+.btn.small{padding:2px 8px;font-size:11px}
+.btn:disabled{opacity:.35;cursor:default}
+#filename{font-size:12px;color:#666}
+#status{font-size:12px;padding:8px 20px;background:#111;border-bottom:1px solid #222;color:#888}
+#status.error{color:#e55}#status.ok{color:#5d8}#status.loading{color:#8bf}#status.warn{color:#ea6}
+#session-banner{display:none;font-size:12px;padding:8px 20px;background:#1a1a2a;border-bottom:1px solid #2a2a4a;color:#9af;gap:12px;align-items:center;flex-shrink:0}
+#stats-bar{background:#151515;border-bottom:1px solid #2a2a2a;padding:8px 20px;display:none;gap:24px;font-size:12px;color:#999;flex-shrink:0;flex-wrap:wrap}
+.stat{display:flex;gap:4px}.stat span:first-child{color:#666}.stat span:last-child{color:#e0e0e0;font-weight:500}
+.stat.warn span:last-child{color:#ea6}.stat.bad span:last-child{color:#e55}
+.stat.warn{cursor:pointer}.stat.warn:hover span:last-child{text-decoration:underline}
+.tabs{display:flex;background:#111;border-bottom:1px solid #2a2a2a;flex-shrink:0;padding:0 12px;overflow-x:auto}
+.tab{padding:10px 18px;font-size:13px;color:#777;cursor:pointer;border-bottom:2px solid transparent;user-select:none;white-space:nowrap}
+.tab:hover{color:#ccc}.tab.active{color:#e0e0e0;border-bottom-color:#6af}
+.tab .badge{background:#2a2a2a;color:#999;font-size:10px;padding:1px 7px;border-radius:8px;margin-left:6px}
+.tab.active .badge{background:#1a3a5a;color:#8bf}
+.panel{display:none;flex:1;overflow:hidden;flex-direction:column}.panel.active{display:flex}
+.toolbar{padding:8px 16px;background:#151515;border-bottom:1px solid #222;display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex-shrink:0}
+.toolbar input,.toolbar select{background:#1e1e1e;border:1px solid #333;color:#ccc;padding:5px 10px;border-radius:3px;font-size:12px;font-family:inherit}
+.toolbar input::placeholder{color:#555}.toolbar input:focus,.toolbar select:focus{outline:none;border-color:#6af}
+.toolbar .spacer{margin-left:auto}
+.table-wrap{flex:1;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:#1a1a1a;color:#999;text-align:left;padding:8px 10px;font-weight:500;position:sticky;top:0;z-index:1;border-bottom:1px solid #333;user-select:none;white-space:nowrap}
+th.sortable{cursor:pointer}th.sortable:hover{color:#ccc;background:#202020}
+th .sort-arrow{color:#6af;font-size:10px;margin-left:3px}
+td{padding:6px 10px;border-bottom:1px solid #222;color:#bbb;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+tr:hover td{background:#1a1a1a}
+tr.clickable{cursor:pointer}tr.clickable:hover td{color:#fff}
+tr.selected td{background:#1a2a3a!important}
+td.actions{white-space:nowrap;min-width:110px}
+.type-badge{display:inline-block;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:500}
+.type-PERSON{background:#1a3a2a;color:#5d8}.type-TOPIC{background:#1a2a3a;color:#6af}
+.type-EVENT{background:#3a2a1a;color:#ea6}.type-FACT{background:#2a1a3a;color:#a6e}
+.type-PREFERENCE{background:#1a3a3a;color:#5dd}.type-BOUNDARY{background:#3a1a1a;color:#e55}
+.type-AFFECT{background:#3a2a3a;color:#e8e}.type-AGENT_NOTE{background:#2a2a1a;color:#dd5}
+.type-CORE_REF{background:#1a1a3a;color:#88e}.type-SKILL{background:#1a2a2a;color:#5bb}
+.scope-badge{display:inline-block;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:600}
+.scope-CORE{background:#1a3a5a;color:#6af}.scope-AGENT{background:#3a2a1a;color:#ea6}
+.att-badge{display:inline-block;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:500}
+.att-agent_private{background:#2a2a2a;color:#999}.att-review_ready{background:#3a3a1a;color:#dd5}
+.att-core_verified{background:#1a3a2a;color:#5d8}
+.layer-badge{display:inline-block;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:500}
+.layer-working{background:#232323;color:#888}.layer-short_term{background:#1a2a3a;color:#6af}
+.layer-long_term{background:#1a3a2a;color:#5d8}.layer-archive{background:#2a1a3a;color:#a6e}
+.edge-type{color:#8af;font-size:11px}
+pre{background:#111;padding:16px;border-radius:4px;overflow:auto;font-size:12px;line-height:1.5;color:#bbb;white-space:pre-wrap;word-break:break-all}
+.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:100;justify-content:center;align-items:center}
+.modal-overlay.show{display:flex}
+.modal{background:#1a1a1a;border:1px solid #333;border-radius:8px;max-width:820px;width:92%;max-height:88vh;display:flex;flex-direction:column}
+.modal h2{padding:0;font-size:15px;color:#e0e0e0}
+.modal-header{display:flex;align-items:center;gap:10px;padding:14px 20px;border-bottom:1px solid #2a2a2a}
+.modal h2 .m-actions, .modal-header .m-actions{margin-left:auto;display:flex;gap:6px}
+.modal-body{padding:16px 20px;overflow:auto;flex:1}
+.modal-close{background:#2a2a2a;border:1px solid #444;color:#ccc;padding:6px 16px;border-radius:4px;cursor:pointer;font-size:12px;margin:12px 20px 16px auto;display:block}
+.modal-close:hover{background:#333;border-color:#666}
+.section-title{color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:14px 0 6px;margin-top:0}
+.kv-row{display:flex;padding:3px 0;font-size:12px;border-bottom:1px solid #222}
+.kv-key{color:#888;width:140px;flex-shrink:0}.kv-val{color:#ddd;word-break:break-all}
+.kv-val.mono{font-family:monospace;font-size:11px}
+.empty{color:#555;text-align:center;padding:40px 20px;font-size:13px}
+.pagination{display:flex;align-items:center;gap:8px;padding:8px 16px;background:#151515;border-top:1px solid #222;flex-shrink:0}
+.pagination button{background:#2a2a2a;border:1px solid #444;color:#ccc;padding:4px 12px;border-radius:3px;cursor:pointer;font-size:12px}
+.pagination button:hover{background:#333;border-color:#666}
+.pagination button:disabled{opacity:.3;cursor:default}
+.pagination span{font-size:12px;color:#888}
+.bulk-bar{display:none;padding:6px 16px;background:#14202c;border-bottom:1px solid #1e2e40;font-size:12px;color:#9af;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap}
+.form-grid{display:grid;grid-template-columns:150px 1fr;gap:8px 12px;font-size:13px}
+.form-grid label{color:#999;padding-top:6px}
+.form-grid input,.form-grid select,.form-grid textarea{background:#1e1e1e;border:1px solid #333;color:#ccc;padding:6px 10px;border-radius:3px;font-size:12px;font-family:inherit;width:100%}
+.form-grid textarea{resize:vertical;min-height:60px;font-family:monospace}
+.form-grid input:focus,.form-grid select:focus,.form-grid textarea:focus{outline:none;border-color:#6af}
+.form-error{color:#e55;font-size:12px;margin-top:10px;display:none}
+.pick-row{display:flex;gap:8px;align-items:center}
+.pick-row input{flex:1}
+.pick-hint{font-size:11px;color:#555;margin-top:4px}
+.conn-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #222;font-size:12px}
+.conn-row .c-main{flex:1;min-width:0}
+.conn-row .c-acts{display:flex;gap:5px;flex-shrink:0}
+.taglist{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.tag{background:#1e1e1e;border:1px solid #333;color:#999;font-size:11px;padding:1px 8px;border-radius:10px;cursor:pointer}
+.tag:hover{color:#ccc;border-color:#555}
+.tag.active{background:#1a3a5a;border-color:#2a5a8a;color:#8bf}
+.sql-input{width:100%;height:110px;background:#1e1e1e;border:1px solid #333;color:#ccc;padding:10px;border-radius:3px;font-family:monospace;font-size:12px;resize:vertical}
+.sql-input:focus{outline:none;border-color:#6af}
+.sql-note{font-size:11px;color:#555;margin:6px 0}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ASHA <span>Memory Manager</span></h1>
+  <span class="dirty-dot" id="dirty-dot" title="Unsaved changes"></span>
+  <div class="file-area">
+    <button class="btn" id="btn-save" disabled>Save As…</button>
+    <button class="btn" id="btn-json" disabled>JSON</button>
+    <button class="btn" id="btn-revert" disabled>Revert</button>
+    <span id="filename"></span>
+    <label class="file-label" for="db-file">Open Database</label>
+    <input type="file" id="db-file" accept=".db,.sqlite,.sqlite3" hidden>
+  </div>
+</header>
+<div id="status">Loading sql.js...</div>
+<div id="session-banner"></div>
+
+<div id="stats-bar">
+  <div class="stat"><span>Nodes</span><span id="s-nodes">-</span></div>
+  <div class="stat"><span>Edges</span><span id="s-edges">-</span></div>
+  <div class="stat"><span>Types</span><span id="s-types">-</span></div>
+  <div class="stat"><span>Schema</span><span id="s-schema">-</span></div>
+  <div class="stat warn" id="st-orphans" title="Edges pointing to missing nodes — click to see" style="display:none"><span>Orphans</span><span id="s-orphans">0</span></div>
+  <div class="stat warn" id="st-dupes" title="Labels used by more than one node — click to see" style="display:none"><span>Dup labels</span><span id="s-dupes">0</span></div>
+  <div class="stat warn" id="st-isolated" title="Nodes with no edges — click to see" style="display:none"><span>Isolated</span><span id="s-isolated">0</span></div>
+  <div class="stat" id="st-fts" title="Full-text index sync state"><span>FTS</span><span id="s-fts">-</span></div>
+  <div class="stat warn" id="st-bloat" title="Ephemeral logs + bloat — click for details" style="display:none"><span>Bloat</span><span id="s-bloat">-</span></div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-panel="nodes">Nodes <span class="badge" id="b-nodes">0</span></div>
+  <div class="tab" data-panel="edges">Edges <span class="badge" id="b-edges">0</span></div>
+  <div class="tab" data-panel="vectors">Vectors <span class="badge" id="b-vectors">0</span></div>
+  <div class="tab" data-panel="layers">Layers <span class="badge" id="b-layers">0</span></div>
+  <div class="tab" data-panel="path">Path</div>
+  <div class="tab" data-panel="schema">Schema</div>
+  <div class="tab" data-panel="stats">Stats</div>
+  <div class="tab" data-panel="sql">SQL</div>
+</div>
+
+<div id="panels">
+
+<div class="panel active" id="panel-nodes">
+  <div class="toolbar">
+    <input type="text" id="node-search" placeholder="Search..." style="width:180px">
+    <select id="node-type-filter"><option value="">All types</option></select>
+    <select id="node-scope-filter"><option value="">All scopes</option><option value="CORE">Core</option><option value="AGENT">Agent notes</option></select>
+    <select id="node-att-filter"><option value="">All attention</option><option value="agent_private">agent_private</option><option value="review_ready">review_ready</option><option value="core_verified">core_verified</option></select>
+    <select id="node-layer-filter"><option value="">All layers</option><option value="working">working</option><option value="short_term">short_term</option><option value="long_term">long_term</option><option value="archive">archive</option></select>
+    <select id="node-source-filter"><option value="">All sources</option></select>
+    <select id="node-agent-filter"><option value="">All agents</option></select>
+    <button class="btn primary" id="btn-new-node">+ New Node</button>
+    <span class="spacer"></span>
+    <span style="color:#555;font-size:11px" id="node-count-label"></span>
+  </div>
+  <div class="bulk-bar" id="node-bulk-bar">
+    <span id="bulk-count">0 selected</span>
+    <button class="btn danger small" id="bulk-delete">Delete</button>
+    <select id="bulk-attention" style="background:#1e1e1e;border:1px solid #333;color:#ccc;padding:3px 8px;font-size:11px">
+      <option value="">Set attention…</option><option value="agent_private">agent_private</option><option value="review_ready">review_ready</option><option value="core_verified">core_verified</option><option value="__clear">(remove)</option>
+    </select>
+    <select id="bulk-layer" style="background:#1e1e1e;border:1px solid #333;color:#ccc;padding:3px 8px;font-size:11px">
+      <option value="">Set layer…</option><option value="working">working</option><option value="short_term">short_term</option><option value="long_term">long_term</option><option value="archive">archive</option>
+    </select>
+    <button class="btn small" id="bulk-relabel">Relabel…</button>
+    <button class="btn small" id="bulk-clear">Clear</button>
+  </div>
+  <div class="table-wrap"><table><thead><tr>
+    <th style="width:28px"><input type="checkbox" id="node-check-all" title="Select all on page"></th>
+    <th style="width:84px" class="sortable" data-key="node_id">ID</th><th style="width:54px">Scope</th><th style="width:92px" class="sortable" data-key="node_type">Type</th><th style="width:130px" class="sortable" data-key="label">Label</th><th class="sortable" data-key="content">Content</th><th style="width:76px">Layer</th><th style="width:88px">Attention</th><th style="width:56px" class="sortable" data-key="trust_level">Trust</th><th style="width:56px" class="sortable" data-key="importance">Imp.</th><th style="width:52px" class="sortable" data-key="access_count">Acc.</th><th style="width:64px" class="sortable" data-key="updated_at">Upd.</th><th style="width:120px">Actions</th>
+  </tr></thead><tbody id="node-tbody"></tbody></table></div>
+  <div class="pagination" id="node-pager" style="display:none">
+    <button id="np-prev">Prev</button><span id="np-info"></span><button id="np-next">Next</button>
+  </div>
+</div>
+
+<div class="panel" id="panel-edges">
+  <div class="toolbar">
+    <input type="text" id="edge-search" placeholder="Search..." style="width:180px">
+    <select id="edge-type-filter"><option value="">All types</option></select>
+    <button class="btn primary" id="btn-new-edge">+ New Edge</button>
+    <span class="spacer"></span>
+    <span style="color:#555;font-size:11px" id="edge-count-label"></span>
+  </div>
+  <div class="table-wrap"><table><thead><tr>
+    <th style="width:90px" class="sortable" data-key="edge_id">ID</th><th style="width:110px" class="sortable" data-key="from_node">From</th><th style="width:110px" class="sortable" data-key="to_node">To</th><th style="width:110px" class="sortable" data-key="edge_type">Type</th><th style="width:60px" class="sortable" data-key="weight">Wt</th><th style="width:80px" class="sortable" data-key="created_at">Created</th><th style="width:110px">Actions</th>
+  </tr></thead><tbody id="edge-tbody"></tbody></table></div>
+  <div class="pagination" id="edge-pager" style="display:none">
+    <button id="ep-prev">Prev</button><span id="ep-info"></span><button id="ep-next">Next</button>
+  </div>
+</div>
+
+<div class="panel" id="panel-vectors">
+  <div class="toolbar">
+    <input type="text" id="vec-search" placeholder="Search node/label..." style="width:180px">
+    <span class="spacer"></span>
+    <span style="color:#555;font-size:11px" id="vec-count-label"></span>
+  </div>
+  <div class="table-wrap"><table><thead><tr>
+    <th style="width:90px">Node</th><th style="width:120px">Label</th><th>Top Terms</th><th style="width:70px">Magnitude</th>
+  </tr></thead><tbody id="vec-tbody"></tbody></table></div>
+</div>
+
+<div class="panel" id="panel-layers">
+  <div class="table-wrap" style="padding:16px"><pre id="layers-pre">Load a database to see memory layer information.</pre></div>
+</div>
+
+<div class="panel" id="panel-path">
+  <div class="toolbar">
+    <input type="text" id="path-from" placeholder="From node (label or ID)…" style="width:220px" list="node-list">
+    <input type="text" id="path-to" placeholder="To node (label or ID)…" style="width:220px" list="node-list">
+    <button class="btn primary" id="btn-path">Find Path</button>
+    <span class="spacer"></span>
+    <span style="color:#555;font-size:11px">Shortest hop path over all edges (undirected)</span>
+  </div>
+  <datalist id="node-list"></datalist>
+  <div class="table-wrap" style="padding:16px"><pre id="path-pre">Select a database and pick two nodes to trace the path between them.</pre></div>
+</div>
+
+<div class="panel" id="panel-schema"><div class="table-wrap" style="padding:16px"><pre id="schema-pre">Load a database to inspect schema.</pre></div></div>
+<div class="panel" id="panel-stats"><div class="table-wrap" style="padding:16px"><pre id="stats-pre">Load a database to see statistics.</pre></div></div>
+
+<div class="panel" id="panel-sql">
+  <div class="toolbar">
+    <span style="color:#888;font-size:12px">SQL console (read-only)</span>
+    <button class="btn primary" id="btn-sql-run">Run</button>
+    <span class="spacer"></span>
+    <span style="color:#555;font-size:11px" id="sql-count"></span>
+  </div>
+  <div style="padding:16px 16px 0"><textarea class="sql-input" id="sql-input" placeholder="SELECT * FROM nodes LIMIT 50;"></textarea>
+  <div class="sql-note">Only SELECT / PRAGMA / EXPLAIN statements are allowed. Writes are managed through the UI.</div></div>
+  <div class="table-wrap" style="padding:16px"><pre id="sql-pre">Run a query to see results.</pre></div>
+</div>
+
+</div>
+
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header"><h2 id="modal-title">Detail</h2><span class="m-actions" id="modal-actions"></span></div>
+    <div class="modal-body" id="modal-body"></div>
+    <button class="modal-close" id="modal-close-btn">Close</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal" style="max-width:520px">
+    <h2 id="confirm-title">Confirm</h2>
+    <div class="modal-body" id="confirm-body"></div>
+    <div style="display:flex;gap:8px;margin:0 20px 16px auto">
+      <button class="modal-close" id="confirm-cancel" style="margin:0">Cancel</button>
+      <button class="btn danger" id="confirm-ok">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Global error handler ──
+window.onerror = function(msg, url, line, col, err) {
+  document.getElementById("status").textContent = "Error at line " + line + ": " + msg;
+  document.getElementById("status").className = "error";
+  console.error(err);
+};
+
+// ── Globals ──
+var SQL = null, db = null, dbName = "", originalBytes = null;
+var allNodes = [], allEdges = [], allVectors = [], allLayers = [], layerByNode = {};
+var PAGE = 50, nodePage = 0, edgePage = 0, vecPage = 0, nodeTypes = [], edgeTypes = [], sourceTypes = [], agentTypes = [];
+var nodeSort = {key:"created_at", dir:-1}, edgeSort = {key:"created_at", dir:-1};
+var nodeSel = {}, edgeSel = {};
+var dirty = false, fts5ok = false, ftsTriggersOn = false;
+var undoStack = [], redoStack = [], UNDO_MAX = 25;
+var changeLog = {node_add:[], node_edit:[], node_del:[], edge_add:[], edge_del:[], edge_edit:[]};
+var healthData = {orphans:[], dupes:[], isolated:[]};
+var forcedNodeFilter = "", forcedEdgeFilter = "";
+var HAS_VECTORS = false, HAS_LAYERS = false;
+
+function hasTable(name) {
+  return query("SELECT name FROM sqlite_master WHERE type='table' AND name='"+name+"'").length > 0;
+}
+
+var NODE_TYPES = ["PERSON","TOPIC","EVENT","FACT","PREFERENCE","BOUNDARY","AFFECT","AGENT_NOTE","CORE_REF","SKILL"];
+var EDGE_TYPES = ["RELATES_TO","CONTRADICTS","SUPPORTS","CAUSED_BY","PART_OF","TRUSTS","DISTRUSTS","REMEMBERS","HAS_PREFERENCE","HAS_BOUNDARY","HAS_AFFECT","HAS_SKILL","REFERS_TO","SUMMARIZES"];
+var LAYERS = ["working","short_term","long_term","archive"];
+var ATTN = ["","agent_private","review_ready","core_verified"];
+
+function status(msg, cls) {
+  var el = document.getElementById("status");
+  el.textContent = msg; el.className = cls || "";
+}
+function nowS() { return Math.floor(Date.now()/1000); }
+function newId(prefix) {
+  var a = new Uint8Array(8);
+  crypto.getRandomValues(a);
+  var hex = "";
+  for (var i=0;i<a.length;i++) hex += ("0"+a[i].toString(16)).slice(-2);
+  return prefix + hex;
+}
+function sha16(text) {
+  return crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)).then(function(buf){
+    var a = new Uint8Array(buf), hex = "";
+    for (var i=0;i<a.length;i++) hex += ("0"+a[i].toString(16)).slice(-2);
+    return hex.slice(0,16);
+  });
+}
+function setDirty(v) {
+  dirty = v;
+  document.getElementById("dirty-dot").classList.toggle("on", v);
+  document.getElementById("btn-save").disabled = !db || !v;
+}
+
+// ── Load sql.js ──
+initSqlJs({
+  locateFile: function(file) {
+    return "https://cdn.jsdelivr.net/npm/sql.js@1.11.0/dist/" + file;
+  }
+}).then(function(sql) {
+  SQL = sql;
+  status("Ready. Open a database file.", "ok");
+  checkSession();
+}).catch(function(err) {
+  status("Failed: " + err.message + ". Check internet connection.", "error");
+  console.error(err);
+});
+
+// ── File picker ──
+document.getElementById("db-file").addEventListener("change", function(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  loadFile(file);
+  this.value = "";
+});
+
+function loadFile(file) {
+  if (!SQL) { status("sql.js not loaded yet.", "error"); return; }
+  status("Reading " + file.name + "...", "loading");
+  dbName = file.name;
+  document.getElementById("filename").textContent = file.name;
+
+  var reader = new FileReader();
+  reader.onload = function() {
+    try {
+      var buf = reader.result;
+      originalBytes = new Uint8Array(buf);
+      db = new SQL.Database(originalBytes.slice());
+      db.run("PRAGMA foreign_keys=ON");
+      clearSession();
+      loadDB();
+    } catch(err) {
+      status("Error: " + err.message, "error");
+    }
+  };
+  reader.onerror = function() {
+    status("Failed to read file.", "error");
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── Load DB into memory ──
+function loadDB() {
+  var tables = query("SELECT name FROM sqlite_master WHERE type='table'");
+  if (!tables.length) { status("No tables found.", "error"); return; }
+
+  allNodes = query("SELECT * FROM nodes ORDER BY created_at DESC");
+  allEdges = query("SELECT * FROM edges ORDER BY created_at DESC");
+
+  var hasVecTable = query("SELECT name FROM sqlite_master WHERE type='table' AND name='node_vectors'").length > 0;
+  allVectors = hasVecTable ? query("SELECT nv.*, n.label FROM node_vectors nv LEFT JOIN nodes n ON nv.node_id = n.node_id") : [];
+  allLayers = query("SELECT name FROM sqlite_master WHERE type='table' AND name='memory_layers'").length > 0
+    ? query("SELECT ml.*, n.label, n.node_type FROM memory_layers ml LEFT JOIN nodes n ON ml.node_id = n.node_id ORDER BY ml.layer, ml.promoted_at")
+    : [];
+  HAS_VECTORS = hasVecTable;
+  HAS_LAYERS = allLayers.length > 0 || hasTable("memory_layers");
+  layerByNode = {};
+  for (var i=0;i<allLayers.length;i++) layerByNode[allLayers[i].node_id] = allLayers[i];
+
+  fts5ok = probeFts5();
+  var hasFtsTriggers = query("SELECT name FROM sqlite_master WHERE type='trigger' AND name='nodes_ai'").length > 0;
+  ftsTriggersOn = hasFtsTriggers;
+  if (!fts5ok && hasFtsTriggers) {
+    try { db.run("DROP TRIGGER IF EXISTS nodes_ai"); db.run("DROP TRIGGER IF EXISTS nodes_ad"); db.run("DROP TRIGGER IF EXISTS nodes_au"); ftsTriggersOn = false; } catch(e) {}
+  }
+
+  undoStack = []; redoStack = []; changeLog = {node_add:[], node_edit:[], node_del:[], edge_add:[], edge_del:[], edge_edit:[]};
+  nodeSel = {}; edgeSel = {}; forcedNodeFilter = ""; forcedEdgeFilter = "";
+  setDirty(false);
+
+  status("Loaded " + allNodes.length + " nodes, " + allEdges.length + " edges." +
+         (fts5ok ? "" : " [FTS5 unavailable — FTS index will not be maintained by this tool]"), fts5ok ? "ok" : "warn");
+
+  document.getElementById("stats-bar").style.display = "flex";
+  updateStats();
+  populateFilters();
+  renderNodes();
+  renderVectors();
+  renderLayers();
+  renderSchema();
+  renderStatsPanel();
+  renderHealth();
+  buildNodeList();
+  enableButtons();
+}
+
+function probeFts5() {
+  try {
+    db.run("CREATE VIRTUAL TABLE IF NOT EXISTS _fts_probe USING fts5(x)");
+    db.run("DROP TABLE IF EXISTS _fts_probe");
+    return true;
+  } catch(e) { return false; }
+}
+
+function enableButtons() {
+  document.getElementById("btn-json").disabled = !db;
+  document.getElementById("btn-revert").disabled = !db;
+  document.getElementById("btn-save").disabled = !db || !dirty;
+}
+
+// ── SQL helpers ──
+function query(sql) {
+  try {
+    var results = db.exec(sql);
+    if (!results || !results.length) return [];
+    var r = results[0];
+    var rows = [];
+    for (var ri = 0; ri < r.values.length; ri++) {
+      var row = {};
+      for (var ci = 0; ci < r.columns.length; ci++) {
+        row[r.columns[ci]] = r.values[ri][ci];
+      }
+      rows.push(row);
+    }
+    return rows;
+  } catch(e) {
+    console.warn("SQL:", sql, e.message);
+    return [];
+  }
+}
+function queryP(sql, params) {
+  // Prepared-statement helper — db.exec does NOT bind params
+  try {
+    var stmt = db.prepare(sql);
+    stmt.bind(params || []);
+    var rows = [];
+    while (stmt.step()) rows.push(stmt.getAsObject());
+    stmt.free();
+    return rows;
+  } catch(e) {
+    console.warn("SQL P:", sql, params, e.message);
+    return [];
+  }
+}
+function execP(sql, params) {
+  try {
+    var stmt = db.prepare(sql);
+    stmt.bind(params || []);
+    stmt.step();
+    stmt.free();
+    return true;
+  } catch(e) {
+    console.warn("execP:", sql, params, e.message);
+    throw e;
+  }
+}
+function escSql(s) { return String(s).replace(/'/g, "''"); }
+
+function pushUndo() {
+  try {
+    undoStack.push(new Uint8Array(db.export()));
+    if (undoStack.length > UNDO_MAX) undoStack.shift();
+    redoStack = [];
+  } catch(e) { console.warn("undo snapshot failed", e); }
+}
+
+function execWrite(label, fn) {
+  if (!db) return;
+  pushUndo();
+  try {
+    db.run("BEGIN");
+    fn();
+    db.run("COMMIT");
+    afterWrite(label);
+  } catch(e) {
+    try { db.run("ROLLBACK"); } catch(e2) {}
+    throw e;
+  }
+}
+
+function afterWrite(label) {
+  setDirty(true);
+  refreshDB();
+  status(label + " — done" + (fts5ok ? "" : " (FTS index not updated)"), "ok");
+  saveSession();
+}
+
+function refreshDB() {
+  allNodes = query("SELECT * FROM nodes");
+  allEdges = query("SELECT * FROM edges");
+  var hasVecTable = query("SELECT name FROM sqlite_master WHERE type='table' AND name='node_vectors'").length > 0;
+  allVectors = hasVecTable ? query("SELECT nv.*, n.label FROM node_vectors nv LEFT JOIN nodes n ON nv.node_id = n.node_id") : [];
+  allLayers = query("SELECT name FROM sqlite_master WHERE type='table' AND name='memory_layers'").length > 0
+    ? query("SELECT ml.*, n.label, n.node_type FROM memory_layers ml LEFT JOIN nodes n ON ml.node_id = n.node_id ORDER BY ml.layer, ml.promoted_at")
+    : [];
+  HAS_VECTORS = hasVecTable;
+  HAS_LAYERS = allLayers.length > 0 || hasTable("memory_layers");
+  layerByNode = {};
+  for (var i=0;i<allLayers.length;i++) layerByNode[allLayers[i].node_id] = allLayers[i];
+  updateStats();
+  populateFilters();
+  renderNodes(); renderEdges(); renderVectors(); renderLayers(); renderSchema(); renderStatsPanel(); renderHealth(); buildNodeList();
+}
+
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(new Uint8Array(db.export()));
+  db = new SQL.Database(undoStack.pop());
+  db.run("PRAGMA foreign_keys=ON");
+  refreshDB();
+  status("Undo", "ok");
+}
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(new Uint8Array(db.export()));
+  db = new SQL.Database(redoStack.pop());
+  db.run("PRAGMA foreign_keys=ON");
+  refreshDB();
+  status("Redo", "ok");
+}
+document.addEventListener("keydown", function(e) {
+  if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase() === "z") {
+    e.preventDefault();
+    if (e.shiftKey) redo(); else undo();
+  }
+  if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase() === "y") { e.preventDefault(); redo(); }
+  if (e.key === "Escape") {
+    document.getElementById("modal").classList.remove("show");
+    document.getElementById("confirm-modal").classList.remove("show");
+  }
+});
+
+// ── Utilities ──
+function esc(s) {
+  s = (s != null ? String(s) : "");
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+function ago(ts) {
+  if (ts == null) return "-";
+  var sec = Math.floor((Date.now() - ts*1000) / 1000);
+  if (sec < 10) return "now"; if (sec < 60) return sec+"s";
+  var m = Math.floor(sec/60); if (m < 60) return m+"m";
+  var h = Math.floor(m/60); if (h < 24) return h+"h";
+  return Math.floor(h/24)+"d";
+}
+function badge(t) {
+  return '<span class="type-badge type-'+esc(t)+'">'+esc(t)+'</span>';
+}
+function parseMeta(r) {
+  try { return JSON.parse(r.metadata || "{}"); } catch(e) { return {}; }
+}
+function nodeScope(r) {
+  var m = parseMeta(r);
+  if (m.attention_state === "core_verified") return "CORE";
+  return (r.node_type === "AGENT_NOTE" || m.agent_scoped === true) ? "AGENT" : "CORE";
+}
+function nodeAttention(r) {
+  var m = parseMeta(r);
+  return m.attention_state || "";
+}
+function nodeAgent(r) {
+  var m = parseMeta(r);
+  if (m.agent_id) return String(m.agent_id);
+  if (Array.isArray(m.agent_ids) && m.agent_ids.length) return m.agent_ids.join("+");
+  return "";
+}
+function indexNode(id, label, content) {
+  // Mirror Python _extract_keywords: tokenize, drop stopwords, keep top 20
+  var STOP = new Set(["to","in","is","it","of","on","as","at","be","by","do","go","he","if","me","my","no","or","so","up","us","we","an","am","hi","the","and","for","are","but","not","you","all","can","had","her","was","one","our","out","day","get","has","him","his","how","its","may","new","now","old","see","two","who","boy","did","she","use","her","way","many","oil","sit","set","run","eat","far","sea","eye","ago","off","too","any","say","man","try","ask","end","why","let","put","own","tell","very","when","much","would","there","their","what","said","have","each","which","will","about","could","other","after","first","never","these","think","where","being","every","great","might","shall","still","those","while","this","that","with","from","they","know","want","been","good","much","some","time","than","them","well","were","here","look","more","only","over","such","take","also","just","like","make","even","then","back","very"]);
+  var txt = (label + " " + content).toLowerCase();
+  var words = txt.match(/\b[\w']{2,}\b/g) || [];
+  words = words.filter(function(w){ return !STOP.has(w); });
+  var cnt = {}, total = words.length || 1;
+  words.forEach(function(w){ cnt[w]=(cnt[w]||0)+1; });
+  var top = Object.keys(cnt).sort(function(a,b){return cnt[b]-cnt[a];}).slice(0,20);
+  try { db.run("DELETE FROM node_index WHERE node_id = ?", [id]); } catch(e) {}
+  top.forEach(function(w){
+    var weight = cnt[w]/total;
+    try { db.run("INSERT OR REPLACE INTO node_index (word, node_id, field, weight) VALUES (?,?,?,?)", [w, id, "content", weight]); } catch(e) {}
+  });
+}
+function scopeBadge(s) {
+  return '<span class="scope-badge scope-'+esc(s)+'">'+esc(s)+'</span>';
+}
+function attBadge(a) {
+  return a ? '<span class="att-badge att-'+esc(a)+'">'+esc(a)+'</span>' : '<span style="color:#444">-</span>';
+}
+function layerBadge(nid) {
+  var l = layerByNode[nid];
+  return l ? '<span class="layer-badge layer-'+esc(l.layer)+'">'+esc(l.layer)+'</span>' : '<span style="color:#444">-</span>';
+}
+
+// ── Stats bar ──
+function updateStats() {
+  var types = {}; for (var i=0;i<allNodes.length;i++) types[allNodes[i].node_type]=1;
+  document.getElementById("s-nodes").textContent = allNodes.length;
+  document.getElementById("s-edges").textContent = allEdges.length;
+  document.getElementById("s-types").textContent = Object.keys(types).length;
+  var tcount = query("SELECT COUNT(*) as c FROM sqlite_master WHERE type='table'");
+  document.getElementById("s-schema").textContent = (tcount[0] ? tcount[0].c : 0) + " tables";
+  document.getElementById("b-nodes").textContent = allNodes.length;
+  document.getElementById("b-edges").textContent = allEdges.length;
+  document.getElementById("b-vectors").textContent = allVectors.length;
+  document.getElementById("b-layers").textContent = allLayers.length;
+  document.getElementById("s-fts").textContent = fts5ok ? "synced" : "stale";
+  document.getElementById("st-fts").className = "stat" + (fts5ok ? "" : " warn");
+  // Bloat: ephemeral logs — uses server config when embedded, else defaults
+  try {
+    var eph = 0;
+    var ephLabels = (window.EPHEMERAL_LABELS && window.EPHEMERAL_LABELS.length ? window.EPHEMERAL_LABELS : ["FEED_SNAPSHOT","RUNTIME_SAMPLE","TIME_ENTRY","DAILY_STATE","CRON_SUPERVISOR_REPORT","BRAIN_MAINTENANCE_REPORT","BRAIN_HISTORY"]);
+    for (var i=0;i<ephLabels.length;i++) {
+      var r = query("SELECT COUNT(*) as c FROM nodes WHERE label='"+escSql(ephLabels[i])+"'");
+      if (r[0]) eph += r[0].c;
+    }
+    var bloatEl = document.getElementById("st-bloat");
+    var bloatVal = document.getElementById("s-bloat");
+    if (eph > 10) {
+      bloatEl.style.display = "flex";
+      bloatEl.classList.add("bad");
+      bloatVal.textContent = eph + " ephemeral";
+      bloatVal.title = eph + " ephemeral log nodes — consider compacting";
+    } else if (eph > 0) {
+      bloatEl.style.display = "flex";
+      bloatEl.classList.remove("bad");
+      bloatVal.textContent = eph + " ephemeral";
+    } else {
+      bloatEl.style.display = "none";
+    }
+  } catch(e) {}
+}
+
+// ── Health check ──
+function renderHealth() {
+  var ids = {}; for (var i=0;i<allNodes.length;i++) ids[allNodes[i].node_id]=1;
+  healthData.orphans = [];
+  for (var i=0;i<allEdges.length;i++) {
+    var e = allEdges[i];
+    if (!ids[e.from_node] || !ids[e.to_node]) healthData.orphans.push(e);
+  }
+  var labels = {};
+  healthData.dupes = [];
+  for (var i=0;i<allNodes.length;i++) {
+    var l = allNodes[i].label || "";
+    if (!labels[l]) labels[l] = [];
+    labels[l].push(allNodes[i]);
+  }
+  for (var k in labels) if (labels[k].length > 1) healthData.dupes = healthData.dupes.concat(labels[k]);
+  var deg = {}; for (var i=0;i<allNodes.length;i++) deg[allNodes[i].node_id]=0;
+  for (var i=0;i<allEdges.length;i++) {
+    if (deg[allEdges[i].from_node] != null) deg[allEdges[i].from_node]++;
+    if (deg[allEdges[i].to_node] != null) deg[allEdges[i].to_node]++;
+  }
+  healthData.isolated = [];
+  for (var i=0;i<allNodes.length;i++) if (deg[allNodes[i].node_id] === 0) healthData.isolated.push(allNodes[i]);
+  document.getElementById("st-orphans").style.display = healthData.orphans.length ? "flex" : "none";
+  document.getElementById("s-orphans").textContent = healthData.orphans.length;
+  document.getElementById("st-dupes").style.display = healthData.dupes.length ? "flex" : "none";
+  document.getElementById("s-dupes").textContent = healthData.dupes.length;
+  document.getElementById("st-isolated").style.display = healthData.isolated.length ? "flex" : "none";
+  document.getElementById("s-isolated").textContent = healthData.isolated.length;
+  document.getElementById("st-orphans").classList.toggle("bad", healthData.orphans.length > 0);
+  document.getElementById("st-dupes").classList.toggle("bad", healthData.dupes.length > 0);
+  document.getElementById("st-isolated").classList.toggle("bad", healthData.isolated.length > 0);
+}
+
+document.getElementById("st-orphans").onclick = function(){ jumpEdges("orphan"); };
+document.getElementById("st-dupes").onclick = function(){ jumpNodes("dupe"); };
+document.getElementById("st-isolated").onclick = function(){ jumpNodes("isolated"); };
+document.getElementById("st-bloat").onclick = function(){ jumpNodes("ephemeral"); };
+
+function jumpNodes(mode) {
+  // toggle: clicking same health pill again clears filter (fixes lock-in)
+  if (forcedNodeFilter === mode) forcedNodeFilter = "";
+  else forcedNodeFilter = mode;
+  nodePage = 0;
+  switchTab("nodes"); renderNodes();
+}
+function jumpEdges(mode) {
+  if (forcedEdgeFilter === mode) forcedEdgeFilter = "";
+  else forcedEdgeFilter = mode;
+  edgePage = 0;
+  switchTab("edges"); renderEdges();
+}
+function clearHealthFilter() {
+  forcedNodeFilter = ""; forcedEdgeFilter = "";
+  nodePage = 0; edgePage = 0;
+  renderNodes(); renderEdges();
+}
+
+// ── Filter dropdowns ──
+function populateFilters() {
+  var nt = {}; for (var i=0;i<allNodes.length;i++) nt[allNodes[i].node_type]=1;
+  nodeTypes = Object.keys(nt).sort();
+  var nf = document.getElementById("node-type-filter");
+  nf.innerHTML = '<option value="">All types</option>' + nodeTypes.map(function(t){return '<option value="'+esc(t)+'">'+esc(t)+'</option>';}).join("");
+
+  var et = {}; for (var i=0;i<allEdges.length;i++) et[allEdges[i].edge_type]=1;
+  edgeTypes = Object.keys(et).sort();
+  var ef = document.getElementById("edge-type-filter");
+  ef.innerHTML = '<option value="">All types</option>' + edgeTypes.map(function(t){return '<option value="'+esc(t)+'">'+esc(t)+'</option>';}).join("");
+
+  var st = {}; for (var i=0;i<allNodes.length;i++) if (allNodes[i].source) st[allNodes[i].source]=1;
+  sourceTypes = Object.keys(st).sort();
+  var sf = document.getElementById("node-source-filter");
+  sf.innerHTML = '<option value="">All sources</option>' + sourceTypes.map(function(t){return '<option value="'+esc(t)+'">'+esc(t)+'</option>';}).join("");
+
+  var at = {}; for (var i=0;i<allNodes.length;i++) { var a = nodeAgent(allNodes[i]); if (a) at[a]=1; }
+  agentTypes = Object.keys(at).sort();
+  var af = document.getElementById("node-agent-filter");
+  af.innerHTML = '<option value="">All agents</option>' + agentTypes.map(function(t){return '<option value="'+esc(t)+'">'+esc(t)+'</option>';}).join("");
+}
+
+// ── Sorting ──
+function applySort(rows, sort) {
+  var key = sort.key, dir = sort.dir;
+  var get = function(r) {
+    if (key === "node_id" || key === "edge_id") return (r[key]||"");
+    if (key === "label" || key === "content" || key === "node_type" || key === "edge_type" || key === "from_node" || key === "to_node") return String(r[key]||"");
+    var v = r[key];
+    return (typeof v === "number") ? v : 0;
+  };
+  rows.sort(function(a,b){
+    var va = get(a), vb = get(b);
+    if (typeof va === "number" && typeof vb === "number") return (va-vb)*dir;
+    return String(va).localeCompare(String(vb))*dir;
+  });
+  return rows;
+}
+function wireSorting() {
+  document.querySelectorAll("th.sortable").forEach(function(th){
+    th.onclick = function(){
+      var key = th.dataset.key;
+      var isNode = th.closest("#panel-nodes") != null;
+      var s = isNode ? nodeSort : edgeSort;
+      if (s.key === key) s.dir = -s.dir; else { s.key = key; s.dir = 1; }
+      if (isNode) { nodePage = 0; renderNodes(); } else { edgePage = 0; renderEdges(); }
+    };
+  });
+}
+
+// ── Nodes ──
+function filteredNodes() {
+  if (forcedNodeFilter === "dupe") return healthData.dupes.slice();
+  if (forcedNodeFilter === "isolated") return healthData.isolated.slice();
+  if (forcedNodeFilter === "ephemeral") {
+    var ephList = (window.EPHEMERAL_LABELS && window.EPHEMERAL_LABELS.length ? window.EPHEMERAL_LABELS : ["FEED_SNAPSHOT","RUNTIME_SAMPLE","TIME_ENTRY","DAILY_STATE","CRON_SUPERVISOR_REPORT","BRAIN_MAINTENANCE_REPORT","BRAIN_HISTORY"]);
+    var ephSet = new Set(ephList);
+    return allNodes.filter(function(r){ return ephSet.has(r.label); });
+  }
+  var q = document.getElementById("node-search").value.toLowerCase();
+  var t = document.getElementById("node-type-filter").value;
+  var s = document.getElementById("node-scope-filter").value;
+  var a = document.getElementById("node-att-filter").value;
+  var l = document.getElementById("node-layer-filter").value;
+  var src = document.getElementById("node-source-filter").value;
+  var ag = document.getElementById("node-agent-filter").value;
+  if (!q && !t && !s && !a && !l && !src && !ag) return allNodes.slice();
+  return allNodes.filter(function(r) {
+    if (t && r.node_type !== t) return false;
+    if (s && nodeScope(r) !== s) return false;
+    if (a && nodeAttention(r) !== a) return false;
+    if (l && !(layerByNode[r.node_id] && layerByNode[r.node_id].layer === l)) return false;
+    if (src && r.source !== src) return false;
+    if (ag && nodeAgent(r) !== ag) return false;
+    if (!q) return true;
+    return (r.label+" "+r.content+" "+r.node_id).toLowerCase().indexOf(q) !== -1;
+  });
+}
+
+function renderNodes() {
+  var f = applySort(filteredNodes(), nodeSort);
+  var total = f.length;
+  var labelEl = document.getElementById("node-count-label");
+  if (forcedNodeFilter) {
+    labelEl.innerHTML = total + " nodes (filtered: " + esc(forcedNodeFilter) + ') <a href="#" onclick="clearHealthFilter();return false;" style="color:#6af;text-decoration:underline;margin-left:6px">Show all</a> <span style="color:#555">— click pill again to toggle</span>';
+  } else {
+    labelEl.textContent = total + " nodes";
+  }
+  // highlight active health pill
+  ["dupe","isolated","ephemeral"].forEach(function(k){
+    var id = k==="dupe"?"st-dupes":k==="isolated"?"st-isolated":"st-bloat";
+    var el = document.getElementById(id);
+    if (el) el.style.outline = (forcedNodeFilter===k ? "1px solid #6af" : "");
+  });
+  var orphanEl = document.getElementById("st-orphans");
+  if (orphanEl) orphanEl.style.outline = (forcedEdgeFilter==="orphan" ? "1px solid #6af" : "");
+  var start = nodePage * PAGE;
+  var end = Math.min(start + PAGE, total);
+  var page = f.slice(start, end);
+
+  var tbody = document.getElementById("node-tbody");
+  if (!page.length) {
+    tbody.innerHTML = '<tr><td colspan="13" class="empty">'+(total?"No match":"No nodes")+'</td></tr>';
+  } else {
+    tbody.innerHTML = page.map(function(r) {
+      var c = esc(r.content||""); if (c.length>80) c=c.slice(0,80)+"...";
+      var att = nodeAttention(r);
+      var agent = nodeAgent(r);
+      var attCell = att ? attBadge(att) + (agent ? ' <span style="color:#777;font-size:10px">'+esc(agent)+'</span>' : "") : '<span style="color:#444">-</span>';
+      return '<tr class="clickable'+(nodeSel[r.node_id]?' selected':'')+'">'
+        +'<td onclick="event.stopPropagation()"><input type="checkbox" data-nid="'+esc(r.node_id)+'" '+(nodeSel[r.node_id]?'checked':'')+'></td>'
+        +'<td onclick="showNode(\''+esc(r.node_id)+'\')" style="font-family:monospace;font-size:11px;color:#777">'+esc((r.node_id||"").slice(0,12))+'</td>'
+        +'<td onclick="showNode(\''+esc(r.node_id)+'\')">'+scopeBadge(nodeScope(r))+'</td>'
+        +'<td onclick="showNode(\''+esc(r.node_id)+'\')">'+badge(r.node_type)+'</td>'
+        +'<td onclick="showNode(\''+esc(r.node_id)+'\')" style="color:#ddd;font-weight:500">'+esc(r.label||"")+'</td>'
+        +'<td onclick="showNode(\''+esc(r.node_id)+'\')" style="color:#999">'+c+'</td>'
+        +'<td onclick="showNode(\''+esc(r.node_id)+'\')">'+layerBadge(r.node_id)+'</td>'
+        +'<td onclick="showNode(\''+esc(r.node_id)+'\')">'+attCell+'</td>'
+        +'<td onclick="showNode(\''+esc(r.node_id)+'\')">'+(typeof r.trust_level==="number"?r.trust_level.toFixed(2):"-")+'</td>'
+        +'<td onclick="showNode(\''+esc(r.node_id)+'\')">'+(typeof r.importance==="number"?r.importance.toFixed(2):"-")+'</td>'
+        +'<td onclick="showNode(\''+esc(r.node_id)+'\')">'+(r.access_count||0)+'</td>'
+        +'<td onclick="showNode(\''+esc(r.node_id)+'\')" style="color:#777">'+ago(r.updated_at)+'</td>'
+        +'<td class="actions"><button class="btn small" onclick="event.stopPropagation();editNode(\''+esc(r.node_id)+'\')">Edit</button> '
+        +'<button class="btn small danger" onclick="event.stopPropagation();delNodeConfirm(\''+esc(r.node_id)+'\')">Del</button></td></tr>';
+    }).join("");
+  }
+
+  var p = document.getElementById("node-pager");
+  if (total > PAGE) {
+    p.style.display = "flex";
+    document.getElementById("np-prev").disabled = nodePage === 0;
+    document.getElementById("np-next").disabled = end >= total;
+    document.getElementById("np-info").textContent = (start+1)+"-"+end+" of "+total;
+  } else { p.style.display = "none"; }
+  updateBulkBar();
+}
+
+document.getElementById("np-prev").onclick = function(){if(nodePage>0){nodePage--;renderNodes();}};
+document.getElementById("np-next").onclick = function(){nodePage++;renderNodes();};
+document.getElementById("node-search").oninput = function(){nodePage=0;forcedNodeFilter="";renderNodes();};
+document.getElementById("node-scope-filter").onchange = function(){nodePage=0;forcedNodeFilter="";renderNodes();};
+document.getElementById("node-att-filter").onchange = function(){nodePage=0;forcedNodeFilter="";renderNodes();};
+document.getElementById("node-layer-filter").onchange = function(){nodePage=0;forcedNodeFilter="";renderNodes();};
+document.getElementById("node-source-filter").onchange = function(){nodePage=0;forcedNodeFilter="";renderNodes();};
+document.getElementById("node-agent-filter").onchange = function(){nodePage=0;forcedNodeFilter="";renderNodes();};
+
+// bulk selection
+document.getElementById("node-tbody").addEventListener("change", function(e){
+  var cb = e.target;
+  if (cb.dataset.nid) {
+    if (cb.checked) nodeSel[cb.dataset.nid] = 1; else delete nodeSel[cb.dataset.nid];
+    cb.closest("tr").classList.toggle("selected", cb.checked);
+    updateBulkBar();
+  }
+});
+document.getElementById("node-check-all").onchange = function(){
+  var rows = document.querySelectorAll("#node-tbody input[data-nid]");
+  for (var i=0;i<rows.length;i++) {
+    var cb = rows[i];
+    if (this.checked) nodeSel[cb.dataset.nid] = 1; else delete nodeSel[cb.dataset.nid];
+    cb.checked = this.checked;
+    cb.closest("tr").classList.toggle("selected", this.checked);
+  }
+  updateBulkBar();
+};
+function updateBulkBar() {
+  var n = Object.keys(nodeSel).length;
+  var bar = document.getElementById("node-bulk-bar");
+  bar.style.display = n ? "flex" : "none";
+  document.getElementById("bulk-count").textContent = n + " selected";
+}
+document.getElementById("bulk-clear").onclick = function(){ nodeSel = {}; renderNodes(); };
+document.getElementById("bulk-delete").onclick = function(){
+  var n = Object.keys(nodeSel).length;
+  confirmModal("Bulk delete", "Delete <b>"+n+"</b> selected nodes and all their edges?", function(){
+    execWrite("Bulk delete " + n + " nodes", function(){
+      Object.keys(nodeSel).forEach(function(id){
+        db.run("DELETE FROM edges WHERE from_node = ? OR to_node = ?", [id, id]);
+        if (HAS_LAYERS) db.run("DELETE FROM memory_layers WHERE node_id = ?", [id]);
+        if (HAS_VECTORS) db.run("DELETE FROM node_vectors WHERE node_id = ?", [id]);
+        try { db.run("DELETE FROM node_index WHERE node_id = ?", [id]); } catch(e) {}
+        try { db.run("DELETE FROM access_log WHERE node_id = ?", [id]); } catch(e) {}
+        db.run("DELETE FROM nodes WHERE node_id = ?", [id]);
+        changeLog.node_del.push(id);
+      });
+    });
+    nodeSel = {};
+  });
+};
+document.getElementById("bulk-attention").onchange = function(){
+  var val = this.value; this.value = "";
+  if (!val) return;
+  var n = Object.keys(nodeSel).length;
+  execWrite("Set attention on " + n + " nodes", function(){
+    Object.keys(nodeSel).forEach(function(id){
+      var row = allNodes.filter(function(r){return r.node_id===id;})[0];
+      if (!row) return;
+      var meta = parseMeta(row);
+      if (val === "__clear") delete meta.attention_state; else meta.attention_state = val;
+      db.run("UPDATE nodes SET metadata = ?, updated_at = ? WHERE node_id = ?", [JSON.stringify(meta), nowS(), id]);
+    });
+  });
+  nodeSel = {};
+};
+document.getElementById("bulk-layer").onchange = function(){
+  var val = this.value; this.value = "";
+  if (!val) return;
+  var n = Object.keys(nodeSel).length;
+  execWrite("Set layer on " + n + " nodes", function(){
+    if (!HAS_LAYERS) return;
+    Object.keys(nodeSel).forEach(function(id){
+      db.run("INSERT OR REPLACE INTO memory_layers (node_id, layer, promoted_at, layer_order) VALUES (?,?,?,?)",
+             [id, val, val==="working"?nowS():null, LAYERS.indexOf(val)+1]);
+    });
+  });
+  nodeSel = {};
+};
+document.getElementById("bulk-relabel").onclick = function(){
+  var newLabel = prompt("New label for " + Object.keys(nodeSel).length + " selected nodes:");
+  if (newLabel == null || !newLabel.trim()) return;
+  var n = Object.keys(nodeSel).length;
+  execWrite("Relabel " + n + " nodes", function(){
+    Object.keys(nodeSel).forEach(function(id){
+      db.run("UPDATE nodes SET label = ?, updated_at = ? WHERE node_id = ?", [newLabel.trim(), nowS(), id]);
+    });
+  });
+  nodeSel = {};
+};
+
+// ── Edges ──
+function filteredEdges() {
+  if (forcedEdgeFilter === "orphan") return healthData.orphans.slice();
+  var q = document.getElementById("edge-search").value.toLowerCase();
+  var t = document.getElementById("edge-type-filter").value;
+  if (!q && !t) return allEdges.slice();
+  return allEdges.filter(function(r) {
+    if (t && r.edge_type !== t) return false;
+    if (!q) return true;
+    return (r.edge_id+" "+r.from_node+" "+r.to_node+" "+r.edge_type).toLowerCase().indexOf(q) !== -1;
+  });
+}
+
+function renderEdges() {
+  var f = applySort(filteredEdges(), edgeSort);
+  var total = f.length;
+  var eLabelEl = document.getElementById("edge-count-label");
+  if (forcedEdgeFilter) {
+    eLabelEl.innerHTML = total + " edges (filtered: " + esc(forcedEdgeFilter) + ') <a href="#" onclick="clearHealthFilter();return false;" style="color:#6af;text-decoration:underline;margin-left:6px">Show all</a>';
+  } else {
+    eLabelEl.textContent = total + " edges";
+  }
+  var start = edgePage * PAGE;
+  var end = Math.min(start + PAGE, total);
+  var page = f.slice(start, end);
+
+  var labels = {}; for (var i=0;i<allNodes.length;i++) labels[allNodes[i].node_id]=allNodes[i].label;
+  var tbody = document.getElementById("edge-tbody");
+  if (!page.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">'+(total?"No match":"No edges")+'</td></tr>';
+  } else {
+    tbody.innerHTML = page.map(function(r) {
+      var fl = labels[r.from_node] ? " ("+labels[r.from_node]+")" : " <span style=\"color:#e55\">MISSING</span>";
+      var tl = labels[r.to_node] ? " ("+labels[r.to_node]+")" : " <span style=\"color:#e55\">MISSING</span>";
+      return '<tr>'
+        +'<td style="font-family:monospace;font-size:11px;color:#777">'+esc((r.edge_id||"").slice(0,12))+'</td>'
+        +'<td style="font-family:monospace;font-size:11px;color:#999" title="'+esc(r.from_node)+'">'+esc((r.from_node||"").slice(0,16))+fl+'</td>'
+        +'<td style="font-family:monospace;font-size:11px;color:#999" title="'+esc(r.to_node)+'">'+esc((r.to_node||"").slice(0,16))+tl+'</td>'
+        +'<td><span class="edge-type">'+esc(r.edge_type||"")+'</span></td>'
+        +'<td>'+(typeof r.weight==="number"?r.weight.toFixed(2):"-")+'</td>'
+        +'<td style="color:#777">'+ago(r.created_at)+'</td>'
+        +'<td class="actions"><button class="btn small" onclick="editEdge(\''+esc(r.edge_id)+'\')">Edit</button> '
+        +'<button class="btn small danger" onclick="delEdgeConfirm(\''+esc(r.edge_id)+'\')">Del</button></td></tr>';
+    }).join("");
+  }
+
+  var p = document.getElementById("edge-pager");
+  if (total > PAGE) {
+    p.style.display = "flex";
+    document.getElementById("ep-prev").disabled = edgePage === 0;
+    document.getElementById("ep-next").disabled = end >= total;
+    document.getElementById("ep-info").textContent = (start+1)+"-"+end+" of "+total;
+  } else { p.style.display = "none"; }
+}
+
+document.getElementById("ep-prev").onclick = function(){if(edgePage>0){edgePage--;renderEdges();}};
+document.getElementById("ep-next").onclick = function(){edgePage++;renderEdges();};
+document.getElementById("edge-search").oninput = function(){edgePage=0;forcedEdgeFilter="";renderEdges();};
+document.getElementById("edge-type-filter").onchange = function(){edgePage=0;forcedEdgeFilter="";renderEdges();};
+
+// ── Vectors ──
+function renderVectors() {
+  var q = (document.getElementById("vec-search")||{}).value||"";
+  var f = allVectors;
+  if (q) {
+    q = q.toLowerCase();
+    f = f.filter(function(r) { return (r.node_id+" "+(r.label||"")).toLowerCase().indexOf(q) !== -1; });
+  }
+  document.getElementById("vec-count-label").textContent = f.length + " vectors";
+  var tbody = document.getElementById("vec-tbody");
+  if (!f.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty">'+(allVectors.length?"No match, ":"")+'No vectors</td></tr>';
+    return;
+  }
+  tbody.innerHTML = f.map(function(r) {
+    var vec = {};
+    try { vec = JSON.parse(r.vector||"{}"); } catch(e) {}
+    var terms = Object.keys(vec).sort(function(a,b){return vec[b]-vec[a];}).slice(0,10);
+    var termStr = terms.map(function(t){return '<span style="color:#8bf;margin-right:6px;font-size:11px">'+esc(t)+'<span style="color:#555;font-size:9px">:'+vec[t].toFixed(1)+'</span></span>';}).join("");
+    if (Object.keys(vec).length > 10) termStr += '<span style="color:#555">+'+ (Object.keys(vec).length-10) +' more</span>';
+    return '<tr>'
+      +'<td style="font-family:monospace;font-size:11px;color:#777">'+esc((r.node_id||"").slice(0,12))+'</td>'
+      +'<td style="color:#ddd">'+esc(r.label||"")+'</td>'
+      +'<td style="color:#999;white-space:normal">'+termStr+'</td>'
+      +'<td>'+(typeof r.magnitude==="number"?r.magnitude.toFixed(2):"-")+'</td></tr>';
+  }).join("");
+}
+
+document.getElementById("vec-search").oninput = function(){renderVectors();};
+
+// ── Layers ──
+function renderLayers() {
+  var pre = document.getElementById("layers-pre");
+  if (!allLayers.length) {
+    var exists = query("SELECT name FROM sqlite_master WHERE type='table' AND name='memory_layers'").length > 0;
+    pre.textContent = exists ? "No layers found." : "v2 memory_layers table not found (v1 database).";
+    return;
+  }
+  var grouped = {};
+  for (var i=0;i<allLayers.length;i++) {
+    var l = allLayers[i];
+    if (!grouped[l.layer]) grouped[l.layer] = [];
+    grouped[l.layer].push(l);
+  }
+  var out = "";
+  for (var li=0;li<LAYERS.length;li++) {
+    var layer = LAYERS[li];
+    var nodes = grouped[layer] || [];
+    out += "-- " + layer + " (" + nodes.length + " nodes) ";
+    for (var j=0;j<50;j++) out += "-";
+    out += "\n";
+    for (var ni=0;ni<nodes.length;ni++) {
+      var n = nodes[ni];
+      var label = n.label || "(no label)";
+      var ntype = n.node_type || "?";
+      var nm = parseMeta(n);
+      var natt = nm.attention_state || "";
+      var scope = nodeScope(n);
+      out += "  " + (n.node_id||"").slice(0,12) + "  [" + scope + "]  " + ntype + "  " + label;
+      if (natt) out += "  (" + natt + ")";
+      if (n.promoted_at) out += "  promoted " + new Date(n.promoted_at*1000).toISOString().slice(0,10);
+      out += "\n";
+    }
+    out += "\n";
+  }
+  pre.textContent = out;
+}
+
+// ── Schema ──
+function renderSchema() {
+  var tables = query("SELECT name,sql FROM sqlite_master WHERE type='table' ORDER BY name");
+  if (!tables.length) { document.getElementById("schema-pre").textContent = "No tables."; return; }
+  var out = "";
+  for (var i=0;i<tables.length;i++) {
+    var t = tables[i];
+    out += "-- " + t.name + " ";
+    for (var j=0;j<50-t.name.length;j++) out += "-";
+    out += "\n" + (t.sql||"") + "\n\n";
+    var cols = query('PRAGMA table_info("'+t.name+'")');
+    out += "  Columns: " + cols.map(function(c){return c.name+" ("+c.type+")";}).join(", ") + "\n";
+    var idxs = query('PRAGMA index_list("'+t.name+'")');
+    if (idxs.length) out += "  Indexes: " + idxs.map(function(i){return i.name;}).join(", ") + "\n";
+    out += "\n";
+  }
+  var meta = query("SELECT key,value FROM schema_meta");
+  if (meta.length) {
+    out += "-- schema_meta ----------------------------------------\n";
+    out += meta.map(function(r){return "  "+r.key+" = "+r.value;}).join("\n")+"\n";
+  }
+  document.getElementById("schema-pre").textContent = out;
+}
+
+// ── Stats panel ──
+function renderStatsPanel() {
+  if (!allNodes.length) { document.getElementById("stats-pre").textContent = "No data."; return; }
+  var tc = {}; for (var i=0;i<allNodes.length;i++) { var t=allNodes[i].node_type||"?"; tc[t]=(tc[t]||0)+1; }
+  var ec = {}; for (var i=0;i<allEdges.length;i++) { var t=allEdges[i].edge_type||"?"; ec[t]=(ec[t]||0)+1; }
+  var sc = {}; for (var i=0;i<allNodes.length;i++) { var s=allNodes[i].source||"?"; sc[s]=(sc[s]||0)+1; }
+  var st=0,si=0,cn=0; for (var i=0;i<allNodes.length;i++){if(typeof allNodes[i].trust_level==="number"){st+=allNodes[i].trust_level;cn++;}}
+  var avgT=cn?st/cn:0; cn=0; for (var i=0;i<allNodes.length;i++){if(typeof allNodes[i].importance==="number"){si+=allNodes[i].importance;cn++;}}
+  var avgI=cn?si/cn:0;
+  var sa=0; for (var i=0;i<allNodes.length;i++) sa+=allNodes[i].access_count||0;
+
+  var sorted=allNodes.slice().sort(function(a,b){return(b.access_count||0)-(a.access_count||0);});
+  function pad(s,n){while(s.length<n)s+=" ";return s;}
+
+  var out = "DATABASE: " + dbName + "\n";
+  out += "Total Nodes: " + allNodes.length + "  |  Total Edges: " + allEdges.length + "\n";
+  out += "Vectors: " + allVectors.length + "  |  Layers: " + allLayers.length + "\n";
+  out += "Orphans: " + healthData.orphans.length + "  |  Dup labels: " + healthData.dupes.length + "  |  Isolated: " + healthData.isolated.length + "\n\n";
+  out += "-- Nodes by Type --\n";
+  Object.keys(tc).sort(function(a,b){return tc[b]-tc[a];}).forEach(function(t){out+="  "+pad(t,16)+" "+tc[t]+"\n";});
+  out += "\n-- Scope (Core vs Agent) --\n";
+  var scCount = {CORE:0, AGENT:0};
+  for (var i=0;i<allNodes.length;i++) scCount[nodeScope(allNodes[i])]++;
+  out += "  "+pad("CORE",16)+scCount.CORE+"\n";
+  out += "  "+pad("AGENT",16)+scCount.AGENT+"\n";
+  out += "\n-- Attention States --\n";
+  var ac = {}; for (var i=0;i<allNodes.length;i++) {
+    var a = nodeAttention(allNodes[i]) || "(none)";
+    ac[a] = (ac[a]||0)+1;
+  }
+  Object.keys(ac).sort(function(a,b){return ac[b]-ac[a];}).forEach(function(a){out+="  "+pad(a,16)+" "+ac[a]+"\n";});
+  out += "\n-- Nodes per Agent --\n";
+  var agc = {}; for (var i=0;i<allNodes.length;i++) {
+    var ag = nodeAgent(allNodes[i]); if (ag) agc[ag]=(agc[ag]||0)+1;
+  }
+  if (Object.keys(agc).length) {
+    Object.keys(agc).sort(function(a,b){return agc[b]-agc[a];}).forEach(function(a){out+="  "+pad(a,16)+" "+agc[a]+"\n";});
+  } else { out += "  (no agent-scoped notes)\n"; }
+  out += "\n-- Edges by Type --\n";
+  Object.keys(ec).sort(function(a,b){return ec[b]-ec[a];}).forEach(function(t){out+="  "+pad(t,16)+" "+ec[t]+"\n";});
+  out += "\n-- Sources --\n";
+  Object.keys(sc).sort(function(a,b){return sc[b]-sc[a];}).forEach(function(s){out+="  "+pad(s,16)+" "+sc[s]+"\n";});
+  out += "\n-- Averages --\n  Trust: "+avgT.toFixed(3)+"  Imp: "+avgI.toFixed(3)+"  Access: "+(sa/allNodes.length).toFixed(1)+"\n\n";
+  out += "-- Most Accessed (top 10) --\n";
+  for (var i=0;i<Math.min(10,sorted.length);i++) {
+    var n=sorted[i]; out+="  "+(n.access_count||0)+"x  "+pad(n.node_type||"",12)+" "+(n.label||"")+"\n";
+  }
+
+  if (allLayers.length) {
+    var lc = {}; for (var i=0;i<allLayers.length;i++) { lc[allLayers[i].layer]=(lc[allLayers[i].layer]||0)+1; }
+    out += "\n-- Memory Layers --\n";
+    for (var li=0;li<LAYERS.length;li++) {
+      var c = lc[LAYERS[li]]||0;
+      if (c) out += "  " + pad(LAYERS[li],16) + c + "\n";
+    }
+  }
+
+  var ql = query("SELECT COUNT(*) as c FROM query_log");
+  if (ql.length && ql[0].c > 0) out += "\n-- Query Log --\n  " + ql[0].c + " queries logged\n";
+
+  document.getElementById("stats-pre").textContent = out;
+}
+
+// ── Modal helpers ──
+function openModal(title, html, actionsHtml) {
+  document.getElementById("modal-title").textContent = title;
+  document.getElementById("modal-actions").innerHTML = actionsHtml || "";
+  document.getElementById("modal-body").innerHTML = html;
+  document.getElementById("modal").classList.add("show");
+}
+function closeModal() { document.getElementById("modal").classList.remove("show"); }
+
+document.getElementById("modal-close-btn").onclick = closeModal;
+document.getElementById("modal").onclick = function(e){if(e.target===e.currentTarget)closeModal();};
+
+var confirmCb = null;
+function confirmModal(title, html, cb) {
+  confirmCb = cb;
+  document.getElementById("confirm-title").textContent = title;
+  document.getElementById("confirm-body").innerHTML = html;
+  document.getElementById("confirm-modal").classList.add("show");
+}
+document.getElementById("confirm-ok").onclick = function(){
+  document.getElementById("confirm-modal").classList.remove("show");
+  if (confirmCb) { var cb = confirmCb; confirmCb = null; cb(); }
+};
+document.getElementById("confirm-cancel").onclick = function(){
+  document.getElementById("confirm-modal").classList.remove("show");
+  confirmCb = null;
+};
+document.getElementById("confirm-modal").onclick = function(e){
+  if (e.target === e.currentTarget) { document.getElementById("confirm-modal").classList.remove("show"); confirmCb = null; }
+};
+
+function formError(msg) {
+  var el = document.querySelector(".form-error");
+  if (el) { el.textContent = msg; el.style.display = "block"; }
+  return false;
+}
+
+// ── Node create / edit / delete ──
+document.getElementById("btn-new-node").onclick = function(){ nodeForm(null); };
+
+function nodeForm(nodeId) {
+  var node = null;
+  for (var i=0;i<allNodes.length;i++) if (allNodes[i].node_id === nodeId) node = allNodes[i];
+  var isEdit = !!node;
+  var meta = node ? parseMeta(node) : {};
+  var att = nodeAttention(node) || "";
+  var layer = node ? (layerByNode[nodeId] ? layerByNode[nodeId].layer : "") : "working";
+
+  var html = '<div class="form-grid">'
+    +'<label>Type *</label><select id="f-node-type">'+NODE_TYPES.map(function(t){return '<option'+(node&&node.node_type===t?' selected':'')+'>'+t+'</option>';}).join("")+'</select>'
+    +'<label>Label</label><input id="f-label" value="'+esc(node?node.label:"")+'" placeholder="Short label (default: first 30 chars of content)">'
+    +'<label>Content *</label><textarea id="f-content">'+esc(node?node.content:"")+'</textarea>'
+    +'<label>Source</label><input id="f-source" value="'+esc(node?node.source:"CORE")+'" list="source-list">'
+    +'<label>Trust (0–1)</label><input id="f-trust" type="number" step="0.05" min="0" max="1" value="'+(node&&typeof node.trust_level==="number"?node.trust_level:0.5)+'">'
+    +'<label>Importance (0–1)</label><input id="f-importance" type="number" step="0.05" min="0" max="1" value="'+(node&&typeof node.importance==="number"?node.importance:0.5)+'">'
+    +'<label>Attention</label><select id="f-attention">'+ATTN.map(function(a){return '<option value="'+esc(a)+'"'+(att===a?' selected':'')+'>'+(a||"(none)")+'</option>';}).join("")+'</select>'
+    +'<label>Layer</label><select id="f-layer">'+LAYERS.map(function(l){return '<option'+(layer===l?' selected':'')+'>'+l+'</option>';}).join("")+'</select>'
+    +'<label>Metadata (JSON)</label><textarea id="f-metadata">'+esc(JSON.stringify(meta, null, 2))+'</textarea>'
+    +'</div><datalist id="source-list">'+sourceTypes.map(function(s){return '<option value="'+esc(s)+'">';}).join("")+'</datalist>'
+    +'<div class="form-error"></div>'
+    +'<div style="display:flex;gap:8px;margin-top:16px">'
+    +'<button class="btn primary" id="f-save">'+(isEdit?"Save changes":"Create node")+'</button>'
+    +'<button class="btn" id="f-cancel">Cancel</button>'
+    +'</div>';
+
+  openModal(isEdit ? "Edit Node" : "New Node", html);
+  document.getElementById("f-cancel").onclick = closeModal;
+  document.getElementById("f-save").onclick = function(){
+    var type = document.getElementById("f-node-type").value;
+    var content = document.getElementById("f-content").value.trim();
+    var label = document.getElementById("f-label").value.trim() || content.slice(0,30);
+    if (!type) return formError("Node type is required.");
+    if (!content) return formError("Content is required.");
+    var trust = parseFloat(document.getElementById("f-trust").value);
+    if (isNaN(trust)) trust = 0.5;
+    trust = Math.max(0, Math.min(1, trust));
+    var imp = parseFloat(document.getElementById("f-importance").value);
+    if (isNaN(imp)) imp = 0.5;
+    imp = Math.max(0, Math.min(1, imp));
+    var attVal = document.getElementById("f-attention").value;
+    var layerVal = document.getElementById("f-layer").value;
+    var metaStr = document.getElementById("f-metadata").value.trim();
+    var metaObj = {};
+    if (metaStr) {
+      try { metaObj = JSON.parse(metaStr); } catch(e) { return formError("Metadata is not valid JSON."); }
+      if (typeof metaObj !== "object" || Array.isArray(metaObj)) return formError("Metadata must be a JSON object.");
+    }
+    if (attVal) metaObj.attention_state = attVal; else delete metaObj.attention_state;
+
+    sha16(content).then(function(checksum){
+      try {
+        if (isEdit) {
+          execWrite("Edited node " + label, function(){
+            db.run("UPDATE nodes SET node_type=?, label=?, content=?, source=?, trust_level=?, importance=?, checksum=?, metadata=?, updated_at=? WHERE node_id=?",
+                   [type, label, content, document.getElementById("f-source").value.trim() || "CORE", trust, imp, checksum, JSON.stringify(metaObj), nowS(), nodeId]);
+            if (HAS_LAYERS) db.run("INSERT OR REPLACE INTO memory_layers (node_id, layer, promoted_at, layer_order) VALUES (?,?,?,?)",
+                   [nodeId, layerVal, layerVal==="working"?nowS():null, LAYERS.indexOf(layerVal)+1]);
+            try { indexNode(nodeId, label, content); } catch(e) {}
+            changeLog.node_edit.push(label);
+          });
+        } else {
+          var id = newId("node_");
+          execWrite("Created node " + label, function(){
+            db.run("INSERT INTO nodes (node_id, node_type, label, content, source, trust_level, created_at, updated_at, access_count, importance, checksum, metadata) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                   [id, type, label, content, document.getElementById("f-source").value.trim() || "CORE", trust, nowS(), nowS(), 0, imp, checksum, JSON.stringify(metaObj)]);
+            if (HAS_LAYERS) db.run("INSERT INTO memory_layers (node_id, layer, promoted_at, layer_order) VALUES (?,?,?,?)", [id, layerVal, null, LAYERS.indexOf(layerVal)+1]);
+            try { indexNode(id, label, content); } catch(e) {}
+            changeLog.node_add.push(label);
+          });
+        }
+        closeModal();
+      } catch(e) {
+        formError("Database error: " + e.message);
+      }
+    });
+  };
+}
+
+function editNode(id) { nodeForm(id); }
+
+function delNodeConfirm(id, fromDetail) {
+  var label = "";
+  for (var i=0;i<allNodes.length;i++) if (allNodes[i].node_id===id) label = allNodes[i].label;
+  if (fromDetail) closeModal();
+  confirmModal("Delete node", "Delete <b>"+esc(label||"(no label)")+"</b> and all its edges? This cannot be undone (except via Undo).",
+    function(){ deleteNode(id); });
+}
+
+function delEdgeConfirm(id, fromDetail) {
+  var et = "";
+  for (var i=0;i<allEdges.length;i++) if (allEdges[i].edge_id===id) et = allEdges[i].edge_type;
+  if (fromDetail) closeModal();
+  confirmModal("Delete edge", "Delete this "+(et?esc(et):"")+" edge?",
+    function(){ deleteEdge(id); });
+}
+
+function deleteNode(id) {
+  var label = "";
+  for (var i=0;i<allNodes.length;i++) if (allNodes[i].node_id===id) label = allNodes[i].label;
+  try {
+    execWrite("Deleted node " + label, function(){
+      db.run("DELETE FROM edges WHERE from_node = ? OR to_node = ?", [id, id]);
+      if (HAS_LAYERS) db.run("DELETE FROM memory_layers WHERE node_id = ?", [id]);
+      if (HAS_VECTORS) db.run("DELETE FROM node_vectors WHERE node_id = ?", [id]);
+      try { db.run("DELETE FROM node_index WHERE node_id = ?", [id]); } catch(e) {}
+      try { db.run("DELETE FROM access_log WHERE node_id = ?", [id]); } catch(e) {}
+      db.run("DELETE FROM nodes WHERE node_id = ?", [id]);
+      changeLog.node_del.push(label || id);
+    });
+    delete nodeSel[id];
+  } catch(e) {
+    status("Delete failed: " + e.message, "error");
+  }
+}
+
+// ── Edge create / edit / delete ──
+document.getElementById("btn-new-edge").onclick = function(){ edgeForm(null); };
+
+function nodePickerHtml(idPrefix, currentId) {
+  return '<input id="'+idPrefix+'" list="node-list" placeholder="Search node label or ID…" value="'+esc(currentId||"")+'">';
+}
+
+function edgeForm(edgeId) {
+  var edge = null;
+  for (var i=0;i<allEdges.length;i++) if (allEdges[i].edge_id === edgeId) edge = allEdges[i];
+  var isEdit = !!edge;
+
+  var html = '<div class="form-grid">'
+    +'<label>From node *</label><div class="pick-row">'+nodePickerHtml("f-edge-from", edge?edge.from_node:"")+'</div>'
+    +'<label>To node *</label><div class="pick-row">'+nodePickerHtml("f-edge-to", edge?edge.to_node:"")+'</div>'
+    +'<div></div><div class="pick-hint">Type a label or node ID; the datalist suggests labels. In the connection view you can pick from connected nodes.</div>'
+    +'<label>Type *</label><select id="f-edge-type">'+EDGE_TYPES.map(function(t){return '<option'+(edge&&edge.edge_type===t?' selected':'')+'>'+t+'</option>';}).join("")+'</select>'
+    +'<label>Weight (−1..1)</label><input id="f-edge-weight" type="number" step="0.05" min="-1" max="1" value="'+(edge&&typeof edge.weight==="number"?edge.weight:1.0)+'">'
+    +'<label>Metadata (JSON)</label><textarea id="f-edge-metadata">'+esc(JSON.stringify(edge?parseMeta(edge):{}, null, 2))+'</textarea>'
+    +'</div>'
+    +'<div class="form-error"></div>'
+    +'<div style="display:flex;gap:8px;margin-top:16px">'
+    +'<button class="btn primary" id="f-save">'+(isEdit?"Save changes":"Create edge")+'</button>'
+    +'<button class="btn" id="f-cancel">Cancel</button>'
+    +'</div>';
+
+  openModal(isEdit ? "Edit Edge" : "New Edge", html);
+  document.getElementById("f-cancel").onclick = closeModal;
+  document.getElementById("f-save").onclick = function(){
+    var fromRaw = document.getElementById("f-edge-from").value.trim();
+    var toRaw = document.getElementById("f-edge-to").value.trim();
+    var fromId = resolveNodeRef(fromRaw);
+    var toId = resolveNodeRef(toRaw);
+    if (!fromId) return formError("From node not found: " + fromRaw);
+    if (!toId) return formError("To node not found: " + toRaw);
+    if (fromId === toId) return formError("From and To cannot be the same node.");
+    var etype = document.getElementById("f-edge-type").value;
+    var weight = parseFloat(document.getElementById("f-edge-weight").value);
+    if (isNaN(weight)) weight = 1.0;
+    weight = Math.max(-1, Math.min(1, weight));
+    var metaStr = document.getElementById("f-edge-metadata").value.trim();
+    var metaObj = {};
+    if (metaStr) {
+      try { metaObj = JSON.parse(metaStr); } catch(e) { return formError("Metadata is not valid JSON."); }
+      if (typeof metaObj !== "object" || Array.isArray(metaObj)) return formError("Metadata must be a JSON object.");
+    }
+    try {
+      if (isEdit) {
+        execWrite("Edited edge", function(){
+          db.run("UPDATE edges SET from_node=?, to_node=?, edge_type=?, weight=?, metadata=? WHERE edge_id=?",
+                 [fromId, toId, etype, weight, JSON.stringify(metaObj), edgeId]);
+          changeLog.edge_edit.push(edgeId);
+        });
+      } else {
+        var dup = queryP("SELECT edge_id FROM edges WHERE from_node=? AND to_node=? AND edge_type=?", [fromId, toId, etype]);
+        if (dup.length) { formError("An identical edge already exists (from/to/type must be unique)."); return; }
+        var id = newId("edge_");
+        execWrite("Created edge " + etype, function(){
+          db.run("INSERT INTO edges (edge_id, from_node, to_node, edge_type, weight, created_at, metadata) VALUES (?,?,?,?,?,?,?)",
+                 [id, fromId, toId, etype, weight, nowS(), JSON.stringify(metaObj)]);
+          changeLog.edge_add.push(etype + " " + (labelOf(fromId)||fromId) + "→" + (labelOf(toId)||toId));
+        });
+      }
+      closeModal();
+    } catch(e) {
+      formError("Database error: " + e.message);
+    }
+  };
+}
+
+function labelOf(id) {
+  for (var i=0;i<allNodes.length;i++) if (allNodes[i].node_id===id) return allNodes[i].label;
+  return null;
+}
+function resolveNodeRef(ref) {
+  if (!ref) return null;
+  for (var i=0;i<allNodes.length;i++) {
+    if (allNodes[i].node_id === ref) return ref;
+    if (allNodes[i].label === ref) return allNodes[i].node_id;
+  }
+  return null;
+}
+
+function editEdge(id) { edgeForm(id); }
+
+function deleteEdge(id) {
+  try {
+    execWrite("Deleted edge", function(){
+      db.run("DELETE FROM edges WHERE edge_id = ?", [id]);
+      changeLog.edge_del.push(id);
+    });
+  } catch(e) {
+    status("Delete failed: " + e.message, "error");
+  }
+}
+
+// ── Node detail modal (with connection hub) ──
+function showNode(id) {
+  var row = null;
+  for (var i=0;i<allNodes.length;i++) { if (allNodes[i].node_id === id) { row = allNodes[i]; break; } }
+  if (!row) return;
+
+  var meta = parseMeta(row);
+  var layer = layerByNode[row.node_id] || null;
+  var att = nodeAttention(row);
+  var agent = nodeAgent(row);
+
+  var actions = '<button class="btn small" onclick="editNode(\''+esc(row.node_id)+'\')">Edit</button> '
+    +'<button class="btn small danger" onclick="delNodeConfirm(\''+esc(row.node_id)+'\',true)">Delete</button>';
+
+  var html = '<div class="section-title">Node</div>';
+  html += '<div class="kv-row"><span class="kv-key">ID</span><span class="kv-val mono">'+esc(row.node_id)+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Type</span><span class="kv-val">'+badge(row.node_type)+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Scope</span><span class="kv-val">'+scopeBadge(nodeScope(row))+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Attention</span><span class="kv-val">'+attBadge(att)+'</span></div>';
+  if (agent) html += '<div class="kv-row"><span class="kv-key">Agent</span><span class="kv-val mono">'+esc(agent)+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Layer</span><span class="kv-val">'+layerBadge(row.node_id)+'</span></div>';
+  if (layer) {
+    html += '<div class="kv-row"><span class="kv-key">Layer Order</span><span class="kv-val">'+esc(String(layer.layer_order||""))+'</span></div>';
+    if (layer.promoted_at) html += '<div class="kv-row"><span class="kv-key">Promoted</span><span class="kv-val">'+new Date((layer.promoted_at||0)*1000).toISOString()+'</span></div>';
+  }
+  html += '<div class="kv-row"><span class="kv-key">Label</span><span class="kv-val" style="font-weight:500">'+esc(row.label)+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Content</span><span class="kv-val">'+esc(row.content)+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Source</span><span class="kv-val">'+esc(row.source||"")+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Trust</span><span class="kv-val">'+(row.trust_level!=null?row.trust_level:"-")+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Importance</span><span class="kv-val">'+(row.importance!=null?row.importance:"-")+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Access</span><span class="kv-val">'+(row.access_count||0)+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Checksum</span><span class="kv-val mono">'+esc(row.checksum||"")+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Created</span><span class="kv-val">'+new Date((row.created_at||0)*1000).toISOString()+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Updated</span><span class="kv-val">'+new Date((row.updated_at||0)*1000).toISOString()+'</span></div>';
+
+  var mkeys = Object.keys(meta);
+  if (mkeys.length) {
+    html += '<div class="section-title">Metadata ('+mkeys.length+')</div>';
+    for (var mi=0;mi<mkeys.length;mi++) {
+      var k = mkeys[mi];
+      var v = meta[k];
+      var vs = (v && typeof v === "object") ? JSON.stringify(v) : String(v);
+      html += '<div class="kv-row"><span class="kv-key">'+esc(k)+'</span><span class="kv-val mono">'+esc(vs)+'</span></div>';
+    }
+  }
+
+  // layer quick-action
+  html += '<div class="section-title">Layer Quick-Action</div>';
+  html += '<div class="taglist">';
+  for (var li=0;li<LAYERS.length;li++) {
+    var cur = layer ? layer.layer : "";
+    html += '<span class="tag'+(cur===LAYERS[li]?' active':'')+'" onclick="setNodeLayer(\''+esc(row.node_id)+'\',\''+LAYERS[li]+'\')">'+LAYERS[li]+'</span>';
+  }
+  html += '</div>';
+
+  // connections
+  var conn = [];
+  for (var i=0;i<allEdges.length;i++) {
+    var e=allEdges[i]; if (e.from_node===id||e.to_node===id) conn.push(e);
+  }
+  html += '<div class="section-title">Connections ('+conn.length+')</div>';
+  if (conn.length) {
+    for (var i=0;i<conn.length;i++) {
+      var e=conn[i];
+      var dir = e.from_node===id ? "\u2192" : "\u2190";
+      var other = e.from_node===id ? e.to_node : e.from_node;
+      var nb = null; for (var j=0;j<allNodes.length;j++){if(allNodes[j].node_id===other){nb=allNodes[j];break;}}
+      var lbl = nb ? esc(nb.label) : '<span style="color:#e55">MISSING</span>';
+      html += '<div class="conn-row"><div class="c-main">'
+        +'<span class="edge-type">'+esc(e.edge_type)+" "+dir+'</span> '
+        +lbl+' <span style="color:#666;font-size:10px">('+badge(nb?nb.node_type:"?")+')</span> '
+        +'<span style="color:#555;font-size:10px">w='+(typeof e.weight==="number"?e.weight.toFixed(2):"-")+'</span>'
+        +'</div><div class="c-acts">'
+        +'<button class="btn small" onclick="editEdge(\''+esc(e.edge_id)+'\')">Edit</button> '
+        +'<button class="btn small danger" onclick="delEdgeConfirm(\''+esc(e.edge_id)+'\',true)">Del</button>'
+        +'</div></div>';
+    }
+  } else {
+    html += '<div style="color:#555;font-size:12px;padding:4px 0">No connections yet.</div>';
+  }
+  html += '<div style="margin-top:10px"><button class="btn small primary" onclick="connectFrom(\''+esc(row.node_id)+'\')">+ Connect to another node</button></div>';
+
+  openModal(row.label||"(no label)", html, actions);
+}
+
+function connectFrom(nodeId) {
+  var html = '<div class="form-grid">'
+    +'<label>Other node *</label><div class="pick-row">'+nodePickerHtml("f-conn-to", "")+'</div>'
+    +'<div></div><div class="pick-hint">Type a label or node ID.</div>'
+    +'<label>Type *</label><select id="f-conn-type">'+EDGE_TYPES.map(function(t){return '<option>'+t+'</option>';}).join("")+'</select>'
+    +'<label>Weight (−1..1)</label><input id="f-conn-weight" type="number" step="0.05" min="-1" max="1" value="1.0">'
+    +'<label>Direction</label><select id="f-conn-dir"><option value="out">'+nodeId.slice(0,12)+' → other</option><option value="in">other → '+nodeId.slice(0,12)+'</option></select>'
+    +'</div>'
+    +'<div class="form-error"></div>'
+    +'<div style="display:flex;gap:8px;margin-top:16px"><button class="btn primary" id="f-save">Connect</button><button class="btn" id="f-cancel">Cancel</button></div>';
+  openModal("Connect Node", html);
+  document.getElementById("f-cancel").onclick = function(){ showNode(nodeId); };
+  document.getElementById("f-save").onclick = function(){
+    var other = resolveNodeRef(document.getElementById("f-conn-to").value.trim());
+    if (!other) { formError("Node not found."); return; }
+    if (other === nodeId) { formError("Cannot connect a node to itself."); return; }
+    var etype = document.getElementById("f-conn-type").value;
+    var weight = parseFloat(document.getElementById("f-conn-weight").value);
+    if (isNaN(weight)) weight = 1.0;
+    weight = Math.max(-1, Math.min(1, weight));
+    var dir = document.getElementById("f-conn-dir").value;
+    var from = dir === "out" ? nodeId : other;
+    var to = dir === "out" ? other : nodeId;
+    var dup = queryP("SELECT edge_id FROM edges WHERE from_node=? AND to_node=? AND edge_type=?", [from, to, etype]);
+    if (dup.length) { formError("That edge already exists."); return; }
+    try {
+      var id = newId("edge_");
+      execWrite("Connected node", function(){
+        db.run("INSERT INTO edges (edge_id, from_node, to_node, edge_type, weight, created_at, metadata) VALUES (?,?,?,?,?,?,?)",
+               [id, from, to, etype, weight, nowS(), "{}"]);
+        changeLog.edge_add.push(etype + " " + (labelOf(from)||from) + "→" + (labelOf(to)||to));
+      });
+      showNode(nodeId);
+    } catch(e) { formError("Database error: " + e.message); }
+  };
+}
+
+function setNodeLayer(id, layer) {
+  if (!HAS_LAYERS) { status("This database has no memory_layers table.", "error"); return; }
+  try {
+    execWrite("Moved node to " + layer, function(){
+      db.run("INSERT OR REPLACE INTO memory_layers (node_id, layer, promoted_at, layer_order) VALUES (?,?,?,?)",
+             [id, layer, layer==="working"?nowS():null, LAYERS.indexOf(layer)+1]);
+    });
+    closeModal();
+    showNode(id);
+  } catch(e) {
+    status("Layer change failed: " + e.message, "error");
+  }
+}
+
+// ── Path finder ──
+function buildNodeList() {
+  var dl = document.getElementById("node-list");
+  dl.innerHTML = allNodes.map(function(n){ return '<option value="'+esc(n.label)+'">'+esc(n.label)+' ('+esc(n.node_type)+')</option>'; }).join("");
+}
+
+document.getElementById("btn-path").onclick = function(){
+  var from = resolveNodeRef(document.getElementById("path-from").value.trim());
+  var to = resolveNodeRef(document.getElementById("path-to").value.trim());
+  var pre = document.getElementById("path-pre");
+  if (!from || !to) { pre.textContent = "One or both nodes were not found. Use a label or full node ID."; return; }
+  if (from === to) { pre.textContent = "Start and end are the same node."; return; }
+
+  var adj = {};
+  for (var i=0;i<allEdges.length;i++) {
+    var e = allEdges[i];
+    if (!adj[e.from_node]) adj[e.from_node] = [];
+    if (!adj[e.to_node]) adj[e.to_node] = [];
+    adj[e.from_node].push({to: e.to_node, type: e.edge_type, w: e.weight});
+    adj[e.to_node].push({to: e.from_node, type: e.edge_type, w: e.weight});
+  }
+
+  var prev = {}, visited = {}, queue = [from];
+  visited[from] = true;
+  while (queue.length) {
+    var cur = queue.shift();
+    if (cur === to) break;
+    var nbrs = adj[cur] || [];
+    for (var i=0;i<nbrs.length;i++) {
+      var nx = nbrs[i].to;
+      if (!visited[nx]) {
+        visited[nx] = true;
+        prev[nx] = {from: cur, to: nx, type: nbrs[i].type};
+        queue.push(nx);
+      }
+    }
+  }
+
+  if (!visited[to]) {
+    pre.textContent = "No path found between the two nodes.";
+    return;
+  }
+  var path = [];
+  var cur = to;
+  while (cur !== from) {
+    path.unshift(prev[cur]);
+    cur = prev[cur].from;
+  }
+  var out = "PATH (" + path.length + " edges)\n";
+  out += "  " + (labelOf(from)||from) + " [" + from.slice(0,12) + "]\n";
+  for (var i=0;i<path.length;i++) {
+    out += "    " + path[i].type + " →\n";
+    out += "  " + (labelOf(path[i].to)||path[i].to) + " [" + path[i].to.slice(0,12) + "]\n";
+  }
+  pre.textContent = out;
+};
+
+// ── SQL console ──
+document.getElementById("btn-sql-run").onclick = function(){
+  var sql = document.getElementById("sql-input").value.trim();
+  var pre = document.getElementById("sql-pre");
+  if (!sql) return;
+  if (!/^\s*(SELECT|PRAGMA|EXPLAIN)/i.test(sql)) {
+    pre.textContent = "Only SELECT / PRAGMA / EXPLAIN statements are allowed.";
+    return;
+  }
+  try {
+    var res = db.exec(sql);
+    if (!res.length) { pre.textContent = "(no results)"; document.getElementById("sql-count").textContent = "0 rows"; return; }
+    var out = "";
+    var totalRows = 0;
+    for (var si=0;si<res.length;si++) {
+      var r = res[si];
+      totalRows += r.values.length;
+      out += "-- " + r.columns.join(" | ") + "\n";
+      for (var ri=0;ri<r.values.length;ri++) out += "  " + r.values[ri].join(" | ") + "\n";
+      if (r.values.length > 200) { out += "  … truncated (first 200 rows)\n"; break; }
+      out += "\n";
+    }
+    pre.textContent = out;
+    document.getElementById("sql-count").textContent = totalRows + " rows";
+  } catch(e) {
+    pre.textContent = "SQL error: " + e.message;
+  }
+};
+
+// ── Save / JSON / Revert ──
+function downloadBytes(bytes, name) {
+  var blob = new Blob([bytes], {type: "application/octet-stream"});
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+}
+
+function changeSummaryHtml() {
+  var h = "";
+  if (changeLog.node_add.length) h += "Nodes added: " + changeLog.node_add.length + "<br>";
+  if (changeLog.node_edit.length) h += "Nodes edited: " + changeLog.node_edit.length + "<br>";
+  if (changeLog.node_del.length) h += "Nodes deleted: " + changeLog.node_del.length + "<br>";
+  if (changeLog.edge_add.length) h += "Edges added: " + changeLog.edge_add.length + "<br>";
+  if (changeLog.edge_edit.length) h += "Edges edited: " + changeLog.edge_edit.length + "<br>";
+  if (changeLog.edge_del.length) h += "Edges deleted: " + changeLog.edge_del.length + "<br>";
+  if (!h) h = "No changes.";
+  return h;
+}
+
+document.getElementById("btn-save").onclick = function(){
+  var total = changeLog.node_add.length + changeLog.node_edit.length + changeLog.node_del.length +
+              changeLog.edge_add.length + changeLog.edge_edit.length + changeLog.edge_del.length;
+  confirmModal("Save As…", "<b>Unsaved changes:</b><br>" + changeSummaryHtml() +
+    "<br>The browser cannot write back to the original file. Downloading a new database file — save it over your <code>core.db</code> when ready.",
+    function(){
+      try {
+        var bytes = db.export();
+        var name = dbName.replace(/\.(db|sqlite|sqlite3)$/i, "") + "_managed.db";
+        downloadBytes(bytes, name);
+        setDirty(false);
+        changeLog = {node_add:[], node_edit:[], node_del:[], edge_add:[], edge_del:[], edge_edit:[]};
+        status("Exported " + name + " (" + bytes.length + " bytes).", "ok");
+        saveSession();
+      } catch(e) { status("Export failed: " + e.message, "error"); }
+    });
+};
+
+document.getElementById("btn-json").onclick = function(){
+  var data = {
+    schema_version: "2.0",
+    exported_at: nowS(),
+    database: dbName,
+    node_count: allNodes.length,
+    edge_count: allEdges.length,
+    nodes: allNodes,
+    edges: allEdges,
+    layers: allLayers,
+    vectors: allVectors.map(function(v){ var o={node_id:v.node_id,magnitude:v.magnitude}; try{o.vector=JSON.parse(v.vector||"{}");}catch(e){o.vector={};} return o; })
+  };
+  var json = JSON.stringify(data, null, 2);
+  downloadBytes(new TextEncoder().encode(json), dbName.replace(/\.(db|sqlite|sqlite3)$/i, "") + ".json");
+  status("Exported JSON snapshot.", "ok");
+};
+
+document.getElementById("btn-revert").onclick = function(){
+  confirmModal("Revert", "Discard all unsaved changes and reload the original file?",
+    function(){
+      try {
+        db = new SQL.Database(originalBytes.slice());
+        db.run("PRAGMA foreign_keys=ON");
+        loadDB();
+        status("Reverted to the original file.", "ok");
+      } catch(e) { status("Revert failed: " + e.message, "error"); }
+    });
+};
+
+// ── Session persistence (IndexedDB) ──
+var IDB_NAME = "asha_manager_session", IDB_STORE = "sessions", MAX_SESSION = 200*1024*1024;
+function idbGet(cb) {
+  try {
+    var req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = function(){ req.result.createObjectStore(IDB_STORE); };
+    req.onsuccess = function(){
+      var tx = req.result.transaction(IDB_STORE, "readonly");
+      var get = tx.objectStore(IDB_STORE).get("current");
+      get.onsuccess = function(){ cb(get.result || null); };
+    };
+    req.onerror = function(){ cb(null); };
+  } catch(e) { cb(null); }
+}
+function idbPut(val, cb) {
+  try {
+    var req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = function(){ req.result.createObjectStore(IDB_STORE); };
+    req.onsuccess = function(){
+      var tx = req.result.transaction(IDB_STORE, "readwrite");
+      tx.objectStore(IDB_STORE).put(val, "current");
+      if (cb) tx.oncomplete = cb;
+    };
+  } catch(e) {}
+}
+function idbDelete() {
+  try {
+    var req = indexedDB.open(IDB_NAME, 1);
+    req.onsuccess = function(){
+      var tx = req.result.transaction(IDB_STORE, "readwrite");
+      tx.objectStore(IDB_STORE).delete("current");
+    };
+  } catch(e) {}
+}
+function saveSession() {
+  if (!db) return;
+  try {
+    var bytes = db.export();
+    if (bytes.length > MAX_SESSION) return;
+    idbPut({name: dbName, bytes: bytes, dirty: dirty, savedAt: nowS(), summary: changeSummaryHtml().replace(/<br>/g, " | ")});
+  } catch(e) {}
+}
+function clearSession() { idbDelete(); }
+function checkSession() {
+  idbGet(function(sess){
+    if (!sess || !sess.bytes) return;
+    var banner = document.getElementById("session-banner");
+    banner.style.display = "flex";
+    banner.innerHTML = '<span>Resume last session? <b>'+esc(sess.name)+'</b> — saved '+ago(sess.savedAt)+' ago'+(sess.dirty?' — <span style="color:#ea6">has unsaved changes</span>':'')+'</span>'
+      +'<button class="btn small primary" id="sess-resume">Resume</button>'
+      +'<button class="btn small" id="sess-discard">Discard</button>';
+    document.getElementById("sess-resume").onclick = function(){
+      banner.style.display = "none";
+      try {
+        dbName = sess.name;
+        document.getElementById("filename").textContent = dbName;
+        originalBytes = new Uint8Array(sess.bytes.slice());
+        db = new SQL.Database(originalBytes.slice());
+        db.run("PRAGMA foreign_keys=ON");
+        loadDB();
+        if (sess.dirty) setDirty(true);
+        status("Session resumed" + (sess.dirty ? " (unsaved changes restored)" : "") + ".", "ok");
+      } catch(e) { status("Could not resume session: " + e.message, "error"); }
+    };
+    document.getElementById("sess-discard").onclick = function(){
+      banner.style.display = "none";
+      clearSession();
+    };
+  });
+}
+
+// ── Tabs ──
+function switchTab(name) {
+  var tabs = document.querySelectorAll(".tab");
+  for (var i=0;i<tabs.length;i++) {
+    tabs[i].classList.toggle("active", tabs[i].dataset.panel === name);
+    document.getElementById("panel-"+tabs[i].dataset.panel).classList.toggle("active", tabs[i].dataset.panel === name);
+  }
+  if (name === "edges") renderEdges();
+}
+var tabs = document.querySelectorAll(".tab");
+for (var i=0;i<tabs.length;i++) {
+  tabs[i].onclick = function() { switchTab(this.dataset.panel); };
+}
+
+// ── Drag & Drop ──
+document.body.ondragover = function(e){e.preventDefault();};
+document.body.ondrop = function(e){
+  e.preventDefault();
+  var file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+};
+
+wireSorting();
+
+// ── Embedded dashboard support: accept DB bytes via postMessage and auto-fetch when ?embedded=1
+(function(){
+  function loadFromBytes(buf, name){
+    try{
+      if(!SQL){ setTimeout(()=>loadFromBytes(buf,name), 300); return; }
+      originalBytes = new Uint8Array(buf);
+      dbName = name || "active.db";
+      document.getElementById("filename").textContent = dbName + " (live)";
+      db = new SQL.Database(originalBytes.slice());
+      try{ db.run("PRAGMA foreign_keys=ON"); }catch(e){}
+      if(typeof clearSession==="function") try{ clearSession(); }catch(e){}
+      if(typeof loadDB==="function") loadDB();
+      status("Loaded live DB ("+originalBytes.length+" bytes) from dashboard.", "ok");
+    }catch(e){ status("Embedded load failed: "+e.message, "error"); }
+  }
+  window.addEventListener("message", function(ev){
+    if(ev.data && ev.data.type==='asha-load-db' && ev.data.buffer){
+      let buf = ev.data.buffer;
+      if(buf instanceof ArrayBuffer) loadFromBytes(buf, ev.data.name||"active.db");
+      else if(buf && buf.byteLength) loadFromBytes(buf, ev.data.name||"active.db");
+    } else if(ev.data && ev.data.type==='asha-config-update' && ev.data.ephemeral_labels){
+      window.EPHEMERAL_LABELS = ev.data.ephemeral_labels;
+      try{ if(typeof updateStats==="function" && typeof allNodes!=="undefined") updateStats(); if(typeof renderNodes==="function") renderNodes(); }catch(e){}
+    } else if(ev.data && ev.data.type==='asha-manager-request-export'){
+      try{
+        if(!db){ ev.source.postMessage({type:'asha-manager-commit', error:'no DB loaded'}, '*'); return; }
+        var bytes = db.export();
+        // send as transferable if possible
+        try{ ev.source.postMessage({type:'asha-manager-commit', buffer: bytes.buffer}, '*', [bytes.buffer]); }
+        catch(e){ ev.source.postMessage({type:'asha-manager-commit', buffer: bytes.buffer}, '*'); }
+      }catch(e){ try{ ev.source.postMessage({type:'asha-manager-commit', error: e.message}, '*'); }catch(e2){} }
+    }
+  });
+  try{
+    const params=new URLSearchParams(location.search);
+    if(params.has('embedded')){
+      fetch('/api/config').then(r=>r.json()).then(j=>{ if(j && j.config && j.config.ephemeral_labels) { window.EPHEMERAL_LABELS = j.config.ephemeral_labels; } }).catch(()=>{});
+      fetch('/api/db_bytes').then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.arrayBuffer(); }).then(buf=>{ if(buf.byteLength>0) loadFromBytes(buf, 'active.db'); }).catch(()=>{});
+      // override Save button to Apply when embedded
+      try{
+        var saveBtn=document.getElementById('btn-save');
+        if(saveBtn){
+          saveBtn.textContent='Apply to DB';
+          saveBtn.title='Save directly to server DB (then Discover + Rebuild)';
+          saveBtn.onclick=function(){
+            if(!db){ status('No DB loaded', 'error'); return; }
+            try{
+              var bytes=db.export();
+              // try transferable
+              try{ window.parent.postMessage({type:'asha-manager-commit', buffer: bytes.buffer}, '*', [bytes.buffer]); }
+              catch(e){ window.parent.postMessage({type:'asha-manager-commit', buffer: bytes.buffer}, '*'); }
+              status('Sending DB to dashboard for Apply…','loading');
+            }catch(e){ status('Export failed: '+e.message,'error'); }
+          };
+        }
+      }catch(e){}
+    }
+  }catch(e){}
+  // Also fetch config when not embedded but on same origin (dashboard) to keep manager in sync if user edits allowlist
+  try{ fetch('/api/config').then(r=>r.json()).then(j=>{ if(j && j.config && j.config.ephemeral_labels) window.EPHEMERAL_LABELS = j.config.ephemeral_labels; }).catch(()=>{}); }catch(e){}
+})();
+</script>
+</body>
+</html>

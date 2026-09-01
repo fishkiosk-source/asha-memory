@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASHA Memory Inspector</title>
+<script src="https://cdn.jsdelivr.net/npm/sql.js@1.11.0/dist/sql-wasm.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,'Segoe UI',monospace;background:#0d0d0d;color:#c0c0c0;height:100vh;display:flex;flex-direction:column}
+header{background:#1a1a1a;border-bottom:1px solid #333;padding:12px 20px;display:flex;align-items:center;gap:16px;flex-shrink:0}
+h1{font-size:16px;font-weight:600;color:#e0e0e0;letter-spacing:0.5px}
+h1 span{color:#888;font-weight:400}
+.file-area{display:flex;align-items:center;gap:10px;margin-left:auto}
+.file-label{background:#2a2a2a;border:1px solid #444;color:#ccc;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:13px}
+.file-label:hover{background:#333;border-color:#666}
+#status{font-size:12px;padding:8px 20px;background:#111;border-bottom:1px solid #222;color:#888}
+#status.error{color:#e55}#status.ok{color:#5d8}#status.loading{color:#8bf}
+#stats-bar{background:#151515;border-bottom:1px solid #2a2a2a;padding:8px 20px;display:none;gap:24px;font-size:12px;color:#999;flex-shrink:0}
+.stat{display:flex;gap:4px}.stat span:first-child{color:#666}.stat span:last-child{color:#e0e0e0;font-weight:500}
+.tabs{display:flex;background:#111;border-bottom:1px solid #2a2a2a;flex-shrink:0;padding:0 12px}
+.tab{padding:10px 18px;font-size:13px;color:#777;cursor:pointer;border-bottom:2px solid transparent;user-select:none}
+.tab:hover{color:#ccc}.tab.active{color:#e0e0e0;border-bottom-color:#6af}
+.tab .badge{background:#2a2a2a;color:#999;font-size:10px;padding:1px 7px;border-radius:8px;margin-left:6px}
+.tab.active .badge{background:#1a3a5a;color:#8bf}
+.panel{display:none;flex:1;overflow:hidden;flex-direction:column}.panel.active{display:flex}
+.toolbar{padding:8px 16px;background:#151515;border-bottom:1px solid #222;display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex-shrink:0}
+.toolbar input,.toolbar select{background:#1e1e1e;border:1px solid #333;color:#ccc;padding:5px 10px;border-radius:3px;font-size:12px;font-family:inherit}
+.toolbar input::placeholder{color:#555}.toolbar input:focus,.toolbar select:focus{outline:none;border-color:#6af}
+.table-wrap{flex:1;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:#1a1a1a;color:#999;text-align:left;padding:8px 10px;font-weight:500;position:sticky;top:0;z-index:1;border-bottom:1px solid #333}
+td{padding:6px 10px;border-bottom:1px solid #222;color:#bbb;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+tr:hover td{background:#1a1a1a}
+tr.clickable{cursor:pointer}tr.clickable:hover td{color:#fff}
+.type-badge{display:inline-block;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:500}
+.type-PERSON{background:#1a3a2a;color:#5d8}.type-TOPIC{background:#1a2a3a;color:#6af}
+.type-EVENT{background:#3a2a1a;color:#ea6}.type-FACT{background:#2a1a3a;color:#a6e}
+.type-PREFERENCE{background:#1a3a3a;color:#5dd}.type-BOUNDARY{background:#3a1a1a;color:#e55}
+.type-AFFECT{background:#3a2a3a;color:#e8e}.type-AGENT_NOTE{background:#2a2a1a;color:#dd5}
+.type-CORE_REF{background:#1a1a3a;color:#88e}.type-SKILL{background:#1a2a2a;color:#5bb}
+.scope-badge{display:inline-block;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:600}
+.scope-CORE{background:#1a3a5a;color:#6af}.scope-AGENT{background:#3a2a1a;color:#ea6}
+.att-badge{display:inline-block;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:500}
+.att-agent_private{background:#2a2a2a;color:#999}.att-review_ready{background:#3a3a1a;color:#dd5}
+.att-core_verified{background:#1a3a2a;color:#5d8}
+.layer-badge{display:inline-block;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:500}
+.layer-working{background:#232323;color:#888}.layer-short_term{background:#1a2a3a;color:#6af}
+.layer-long_term{background:#1a3a2a;color:#5d8}.layer-archive{background:#2a1a3a;color:#a6e}
+.edge-type{color:#8af;font-size:11px}
+pre{background:#111;padding:16px;border-radius:4px;overflow:auto;font-size:12px;line-height:1.5;color:#bbb;white-space:pre-wrap;word-break:break-all}
+.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:100;justify-content:center;align-items:center}
+.modal-overlay.show{display:flex}
+.modal{background:#1a1a1a;border:1px solid #333;border-radius:8px;max-width:800px;width:90%;max-height:85vh;display:flex;flex-direction:column}
+.modal h2{padding:16px 20px;font-size:15px;color:#e0e0e0;border-bottom:1px solid #2a2a2a}
+.modal-body{padding:16px 20px;overflow:auto;flex:1}
+.modal-close{background:#2a2a2a;border:1px solid #444;color:#ccc;padding:6px 16px;border-radius:4px;cursor:pointer;font-size:12px;margin:12px 20px 16px auto;display:block}
+.modal-close:hover{background:#333;border-color:#666}
+.section-title{color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:14px 0 6px;margin-top:0}
+.kv-row{display:flex;padding:3px 0;font-size:12px;border-bottom:1px solid #222}
+.kv-key{color:#888;width:140px;flex-shrink:0}.kv-val{color:#ddd;word-break:break-all}
+.kv-val.mono{font-family:monospace;font-size:11px}
+.empty{color:#555;text-align:center;padding:40px 20px;font-size:13px}
+.pagination{display:flex;align-items:center;gap:8px;padding:8px 16px;background:#151515;border-top:1px solid #222;flex-shrink:0}
+.pagination button{background:#2a2a2a;border:1px solid #444;color:#ccc;padding:4px 12px;border-radius:3px;cursor:pointer;font-size:12px}
+.pagination button:hover{background:#333;border-color:#666}
+.pagination button:disabled{opacity:.3;cursor:default}
+.pagination span{font-size:12px;color:#888}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ASHA <span>Memory Inspector</span></h1>
+  <div class="file-area">
+    <span id="filename"></span>
+    <label class="file-label" for="db-file">Open Database</label>
+    <input type="file" id="db-file" accept=".db,.sqlite,.sqlite3" hidden>
+  </div>
+</header>
+<div id="status">Loading sql.js...</div>
+
+<div id="stats-bar">
+  <div class="stat"><span>Nodes</span><span id="s-nodes">-</span></div>
+  <div class="stat"><span>Edges</span><span id="s-edges">-</span></div>
+  <div class="stat"><span>Types</span><span id="s-types">-</span></div>
+  <div class="stat"><span>Schema</span><span id="s-schema">-</span></div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-panel="nodes">Nodes <span class="badge" id="b-nodes">0</span></div>
+  <div class="tab" data-panel="edges">Edges <span class="badge" id="b-edges">0</span></div>
+  <div class="tab" data-panel="vectors">Vectors <span class="badge" id="b-vectors">0</span></div>
+  <div class="tab" data-panel="layers">Layers <span class="badge" id="b-layers">0</span></div>
+  <div class="tab" data-panel="schema">Schema</div>
+  <div class="tab" data-panel="stats">Stats</div>
+</div>
+
+<div id="panels">
+
+<div class="panel active" id="panel-nodes">
+  <div class="toolbar">
+    <input type="text" id="node-search" placeholder="Search..." style="width:200px">
+    <select id="node-type-filter"><option value="">All types</option></select>
+    <select id="node-scope-filter"><option value="">All scopes</option><option value="CORE">Core</option><option value="AGENT">Agent notes</option></select>
+    <span style="margin-left:auto;color:#555;font-size:11px" id="node-count-label"></span>
+  </div>
+  <div class="table-wrap"><table><thead><tr>
+    <th style="width:84px">ID</th><th style="width:54px">Scope</th><th style="width:92px">Type</th><th style="width:130px">Label</th><th>Content</th><th style="width:76px">Layer</th><th style="width:88px">Attention</th><th style="width:56px">Trust</th><th style="width:56px">Imp.</th><th style="width:52px">Acc.</th><th style="width:64px">Upd.</th>
+  </tr></thead><tbody id="node-tbody"></tbody></table></div>
+  <div class="pagination" id="node-pager" style="display:none">
+    <button id="np-prev">Prev</button><span id="np-info"></span><button id="np-next">Next</button>
+  </div>
+</div>
+
+<div class="panel" id="panel-edges">
+  <div class="toolbar">
+    <input type="text" id="edge-search" placeholder="Search..." style="width:200px">
+    <select id="edge-type-filter"><option value="">All types</option></select>
+    <span style="margin-left:auto;color:#555;font-size:11px" id="edge-count-label"></span>
+  </div>
+  <div class="table-wrap"><table><thead><tr>
+    <th style="width:90px">ID</th><th style="width:110px">From</th><th style="width:110px">To</th><th style="width:110px">Type</th><th style="width:60px">Wt</th><th style="width:80px">Created</th>
+  </tr></thead><tbody id="edge-tbody"></tbody></table></div>
+  <div class="pagination" id="edge-pager" style="display:none">
+    <button id="ep-prev">Prev</button><span id="ep-info"></span><button id="ep-next">Next</button>
+  </div>
+</div>
+
+<div class="panel" id="panel-vectors">
+  <div class="toolbar">
+    <input type="text" id="vec-search" placeholder="Search node/label..." style="width:200px">
+    <span style="margin-left:auto;color:#555;font-size:11px" id="vec-count-label"></span>
+  </div>
+  <div class="table-wrap"><table><thead><tr>
+    <th style="width:90px">Node</th><th style="width:120px">Label</th><th>Top Terms</th><th style="width:70px">Magnitude</th>
+  </tr></thead><tbody id="vec-tbody"></tbody></table></div>
+</div>
+
+<div class="panel" id="panel-layers">
+  <div class="table-wrap" style="padding:16px"><pre id="layers-pre">Load a database to see memory layer information.</pre></div>
+</div>
+
+<div class="panel" id="panel-schema"><div class="table-wrap" style="padding:16px"><pre id="schema-pre">Load a database to inspect schema.</pre></div></div>
+<div class="panel" id="panel-stats"><div class="table-wrap" style="padding:16px"><pre id="stats-pre">Load a database to see statistics.</pre></div></div>
+
+</div>
+
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2 id="modal-title">Node Detail</h2>
+    <div class="modal-body" id="modal-body"></div>
+    <button class="modal-close" id="modal-close-btn">Close</button>
+  </div>
+</div>
+
+<script>
+// ── Global error handler ──
+window.onerror = function(msg, url, line, col, err) {
+  document.getElementById("status").textContent = "Error at line " + line + ": " + msg;
+  document.getElementById("status").className = "error";
+  console.error(err);
+};
+
+// ── Globals ──
+var SQL = null, db = null, dbName = "", allNodes = [], allEdges = [], allVectors = [], allLayers = [];
+var layerByNode = {};
+var PAGE = 50, nodePage = 0, edgePage = 0, vecPage = 0, nodeTypes = [], edgeTypes = [];
+
+function status(msg, cls) {
+  var el = document.getElementById("status");
+  el.textContent = msg; el.className = cls || "";
+}
+
+// ── Load sql.js ──
+initSqlJs({
+  locateFile: function(file) {
+    return "https://cdn.jsdelivr.net/npm/sql.js@1.11.0/dist/" + file;
+  }
+}).then(function(sql) {
+  SQL = sql;
+  status("Ready. Open a database file.", "ok");
+}).catch(function(err) {
+  status("Failed: " + err.message + ". Check internet connection.", "error");
+  console.error(err);
+});
+
+// ── File picker ──
+document.getElementById("db-file").addEventListener("change", function(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  loadFile(file);
+  this.value = "";
+});
+
+function loadFile(file) {
+  if (!SQL) { status("sql.js not loaded yet.", "error"); return; }
+  status("Reading " + file.name + "...", "loading");
+  dbName = file.name;
+  document.getElementById("filename").textContent = file.name;
+
+  var reader = new FileReader();
+  reader.onload = function() {
+    try {
+      var buf = reader.result;
+      db = new SQL.Database(new Uint8Array(buf));
+      loadDB();
+    } catch(err) {
+      status("Error: " + err.message, "error");
+    }
+  };
+  reader.onerror = function() {
+    status("Failed to read file.", "error");
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── Load DB into memory ──
+function loadDB() {
+  var tables = query("SELECT name FROM sqlite_master WHERE type='table'");
+  if (!tables.length) { status("No tables found.", "error"); return; }
+
+  allNodes = query("SELECT * FROM nodes ORDER BY created_at DESC");
+  allEdges = query("SELECT * FROM edges ORDER BY created_at DESC");
+
+  // v2 tables (may not exist in v1 DBs)
+  var hasVecTable = query("SELECT name FROM sqlite_master WHERE type='table' AND name='node_vectors'").length > 0;
+  allVectors = hasVecTable ? query("SELECT nv.*, n.label FROM node_vectors nv LEFT JOIN nodes n ON nv.node_id = n.node_id") : [];
+  allLayers = query("SELECT name FROM sqlite_master WHERE type='table' AND name='memory_layers'").length > 0
+    ? query("SELECT ml.*, n.label, n.node_type FROM memory_layers ml LEFT JOIN nodes n ON ml.node_id = n.node_id ORDER BY ml.layer, ml.promoted_at")
+    : [];
+  layerByNode = {};
+  for (var i=0;i<allLayers.length;i++) layerByNode[allLayers[i].node_id] = allLayers[i];
+
+  status("Loaded " + allNodes.length + " nodes, " + allEdges.length + " edges.", "ok");
+
+  document.getElementById("stats-bar").style.display = "flex";
+  updateStats();
+  populateFilters();
+  renderNodes();
+  renderVectors();
+  renderLayers();
+  renderSchema();
+  renderStatsPanel();
+}
+
+// ── SQL helper (uses db.exec to avoid prepared statement issues) ──
+function query(sql) {
+  try {
+    var results = db.exec(sql);
+    if (!results || !results.length) return [];
+    var r = results[0];
+    var rows = [];
+    for (var ri = 0; ri < r.values.length; ri++) {
+      var row = {};
+      for (var ci = 0; ci < r.columns.length; ci++) {
+        row[r.columns[ci]] = r.values[ri][ci];
+      }
+      rows.push(row);
+    }
+    return rows;
+  } catch(e) {
+    console.warn("SQL:", sql, e.message);
+    return [];
+  }
+}
+
+// ── Utilities ──
+function esc(s) {
+  s = (s != null ? String(s) : "");
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+function ago(ts) {
+  if (ts == null) return "-";
+  var sec = Math.floor((Date.now() - ts*1000) / 1000);
+  if (sec < 10) return "now"; if (sec < 60) return sec+"s";
+  var m = Math.floor(sec/60); if (m < 60) return m+"m";
+  var h = Math.floor(m/60); if (h < 24) return h+"h";
+  return Math.floor(h/24)+"d";
+}
+function badge(t) {
+  return '<span class="type-badge type-'+esc(t)+'">'+esc(t)+'</span>';
+}
+
+// ── New-standard helpers: scope / attention / layer ──
+function parseMeta(r) {
+  try { return JSON.parse(r.metadata || "{}"); } catch(e) { return {}; }
+}
+function nodeScope(r) {
+  var m = parseMeta(r);
+  if (m.attention_state === "core_verified") return "CORE";
+  return (r.node_type === "AGENT_NOTE" || m.agent_scoped === true) ? "AGENT" : "CORE";
+}
+function nodeAttention(r) {
+  var m = parseMeta(r);
+  return m.attention_state || "";
+}
+function nodeAgent(r) {
+  var m = parseMeta(r);
+  if (m.agent_id) return String(m.agent_id);
+  if (Array.isArray(m.agent_ids) && m.agent_ids.length) return m.agent_ids.join("+");
+  return "";
+}
+function scopeBadge(s) {
+  return '<span class="scope-badge scope-'+esc(s)+'">'+esc(s)+'</span>';
+}
+function attBadge(a) {
+  return a ? '<span class="att-badge att-'+esc(a)+'">'+esc(a)+'</span>' : '<span style="color:#444">-</span>';
+}
+function layerBadge(nid) {
+  var l = layerByNode[nid];
+  return l ? '<span class="layer-badge layer-'+esc(l.layer)+'">'+esc(l.layer)+'</span>' : '<span style="color:#444">-</span>';
+}
+
+// ── Stats bar ──
+function updateStats() {
+  var types = {}; for (var i=0;i<allNodes.length;i++) types[allNodes[i].node_type]=1;
+  Object.keys(types).length;
+  document.getElementById("s-nodes").textContent = allNodes.length;
+  document.getElementById("s-edges").textContent = allEdges.length;
+  document.getElementById("s-types").textContent = Object.keys(types).length;
+  var tcount = query("SELECT COUNT(*) as c FROM sqlite_master WHERE type='table'");
+  document.getElementById("s-schema").textContent = (tcount[0] ? tcount[0].c : 0) + " tables";
+  document.getElementById("b-nodes").textContent = allNodes.length;
+  document.getElementById("b-edges").textContent = allEdges.length;
+  document.getElementById("b-vectors").textContent = allVectors.length;
+  document.getElementById("b-layers").textContent = allLayers.length;
+}
+
+// ── Filter dropdowns ──
+function populateFilters() {
+  var nt = {}; for (var i=0;i<allNodes.length;i++) nt[allNodes[i].node_type]=1;
+  nodeTypes = Object.keys(nt).sort();
+  var nf = document.getElementById("node-type-filter");
+  nf.innerHTML = '<option value="">All types</option>' + nodeTypes.map(function(t){return '<option value="'+esc(t)+'">'+esc(t)+'</option>';}).join("");
+
+  var et = {}; for (var i=0;i<allEdges.length;i++) et[allEdges[i].edge_type]=1;
+  edgeTypes = Object.keys(et).sort();
+  var ef = document.getElementById("edge-type-filter");
+  ef.innerHTML = '<option value="">All types</option>' + edgeTypes.map(function(t){return '<option value="'+esc(t)+'">'+esc(t)+'</option>';}).join("");
+
+  nf.onchange = function(){nodePage=0;renderNodes();};
+  ef.onchange = function(){edgePage=0;renderEdges();};
+}
+
+// ── Nodes ──
+function filteredNodes() {
+  var q = document.getElementById("node-search").value.toLowerCase();
+  var t = document.getElementById("node-type-filter").value;
+  var s = document.getElementById("node-scope-filter").value;
+  if (!q && !t && !s) return allNodes;
+  return allNodes.filter(function(r) {
+    if (t && r.node_type !== t) return false;
+    if (s && nodeScope(r) !== s) return false;
+    if (!q) return true;
+    return (r.label+" "+r.content+" "+r.node_id).toLowerCase().indexOf(q) !== -1;
+  });
+}
+
+function renderNodes() {
+  var f = filteredNodes();
+  var total = f.length;
+  document.getElementById("node-count-label").textContent = total + " nodes";
+  var start = nodePage * PAGE;
+  var end = Math.min(start + PAGE, total);
+  var page = f.slice(start, end);
+
+  var tbody = document.getElementById("node-tbody");
+  if (!page.length) {
+    tbody.innerHTML = '<tr><td colspan="11" class="empty">'+(total?"No match":"No nodes")+'</td></tr>';
+  } else {
+    tbody.innerHTML = page.map(function(r) {
+      var c = esc(r.content||""); if (c.length>80) c=c.slice(0,80)+"...";
+      var att = nodeAttention(r);
+      var agent = nodeAgent(r);
+      var attCell = att ? attBadge(att) + (agent ? ' <span style="color:#777;font-size:10px">'+esc(agent)+'</span>' : "") : '<span style="color:#444">-</span>';
+      return '<tr class="clickable" onclick="showNode(\''+esc(r.node_id)+'\')">'
+        +'<td style="font-family:monospace;font-size:11px;color:#777">'+esc((r.node_id||"").slice(0,12))+'</td>'
+        +'<td>'+scopeBadge(nodeScope(r))+'</td>'
+        +'<td>'+badge(r.node_type)+'</td>'
+        +'<td style="color:#ddd;font-weight:500">'+esc(r.label||"")+'</td>'
+        +'<td style="color:#999">'+c+'</td>'
+        +'<td>'+layerBadge(r.node_id)+'</td>'
+        +'<td>'+attCell+'</td>'
+        +'<td>'+(typeof r.trust_level==="number"?r.trust_level.toFixed(2):"-")+'</td>'
+        +'<td>'+(typeof r.importance==="number"?r.importance.toFixed(2):"-")+'</td>'
+        +'<td>'+(r.access_count||0)+'</td>'
+        +'<td style="color:#777">'+ago(r.updated_at)+'</td></tr>';
+    }).join("");
+  }
+
+  var p = document.getElementById("node-pager");
+  if (total > PAGE) {
+    p.style.display = "flex";
+    document.getElementById("np-prev").disabled = nodePage === 0;
+    document.getElementById("np-next").disabled = end >= total;
+    document.getElementById("np-info").textContent = (start+1)+"-"+end+" of "+total;
+  } else { p.style.display = "none"; }
+}
+
+document.getElementById("np-prev").onclick = function(){if(nodePage>0){nodePage--;renderNodes();}};
+document.getElementById("np-next").onclick = function(){nodePage++;renderNodes();};
+document.getElementById("node-search").oninput = function(){nodePage=0;renderNodes();};
+document.getElementById("node-scope-filter").onchange = function(){nodePage=0;renderNodes();};
+
+// ── Edges ──
+function filteredEdges() {
+  var q = document.getElementById("edge-search").value.toLowerCase();
+  var t = document.getElementById("edge-type-filter").value;
+  if (!q && !t) return allEdges;
+  return allEdges.filter(function(r) {
+    if (t && r.edge_type !== t) return false;
+    if (!q) return true;
+    return (r.edge_id+" "+r.from_node+" "+r.to_node+" "+r.edge_type).toLowerCase().indexOf(q) !== -1;
+  });
+}
+
+function renderEdges() {
+  var f = filteredEdges();
+  var total = f.length;
+  document.getElementById("edge-count-label").textContent = total + " edges";
+  var start = edgePage * PAGE;
+  var end = Math.min(start + PAGE, total);
+  var page = f.slice(start, end);
+
+  var tbody = document.getElementById("edge-tbody");
+  if (!page.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">'+(total?"No match":"No edges")+'</td></tr>';
+  } else {
+    tbody.innerHTML = page.map(function(r) {
+      return '<tr>'
+        +'<td style="font-family:monospace;font-size:11px;color:#777">'+esc((r.edge_id||"").slice(0,12))+'</td>'
+        +'<td style="font-family:monospace;font-size:11px;color:#999">'+esc((r.from_node||"").slice(0,16))+'</td>'
+        +'<td style="font-family:monospace;font-size:11px;color:#999">'+esc((r.to_node||"").slice(0,16))+'</td>'
+        +'<td><span class="edge-type">'+esc(r.edge_type||"")+'</span></td>'
+        +'<td>'+(typeof r.weight==="number"?r.weight.toFixed(2):"-")+'</td>'
+        +'<td style="color:#777">'+ago(r.created_at)+'</td></tr>';
+    }).join("");
+  }
+
+  var p = document.getElementById("edge-pager");
+  if (total > PAGE) {
+    p.style.display = "flex";
+    document.getElementById("ep-prev").disabled = edgePage === 0;
+    document.getElementById("ep-next").disabled = end >= total;
+    document.getElementById("ep-info").textContent = (start+1)+"-"+end+" of "+total;
+  } else { p.style.display = "none"; }
+}
+
+document.getElementById("ep-prev").onclick = function(){if(edgePage>0){edgePage--;renderEdges();}};
+document.getElementById("ep-next").onclick = function(){edgePage++;renderEdges();};
+document.getElementById("edge-search").oninput = function(){edgePage=0;renderEdges();};
+
+// ── Vectors ──
+function renderVectors() {
+  var q = (document.getElementById("vec-search")||{}).value||"";
+  var f = allVectors;
+  if (q) {
+    q = q.toLowerCase();
+    f = f.filter(function(r) { return (r.node_id+" "+(r.label||"")).toLowerCase().indexOf(q) !== -1; });
+  }
+  document.getElementById("vec-count-label").textContent = f.length + " vectors";
+  var tbody = document.getElementById("vec-tbody");
+  if (!f.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty">'+(allVectors.length?"No match, ":"")+'No vectors</td></tr>';
+    return;
+  }
+  tbody.innerHTML = f.map(function(r) {
+    var vec = {};
+    try { vec = JSON.parse(r.vector||"{}"); } catch(e) {}
+    var terms = Object.keys(vec).sort(function(a,b){return vec[b]-vec[a];}).slice(0,10);
+    var termStr = terms.map(function(t){return '<span style="color:#8bf;margin-right:6px;font-size:11px">'+esc(t)+'<span style="color:#555;font-size:9px">:'+vec[t].toFixed(1)+'</span></span>';}).join("");
+    if (Object.keys(vec).length > 10) termStr += '<span style="color:#555">+'+ (Object.keys(vec).length-10) +' more</span>';
+    return '<tr>'
+      +'<td style="font-family:monospace;font-size:11px;color:#777">'+esc((r.node_id||"").slice(0,12))+'</td>'
+      +'<td style="color:#ddd">'+esc(r.label||"")+'</td>'
+      +'<td style="color:#999;white-space:normal">'+termStr+'</td>'
+      +'<td>'+(typeof r.magnitude==="number"?r.magnitude.toFixed(2):"-")+'</td></tr>';
+  }).join("");
+}
+
+document.getElementById("vec-search").oninput = function(){renderVectors();};
+
+// ── Layers ──
+function renderLayers() {
+  var pre = document.getElementById("layers-pre");
+  if (!allLayers.length) {
+    var exists = query("SELECT name FROM sqlite_master WHERE type='table' AND name='memory_layers'").length > 0;
+    pre.textContent = exists ? "No layers found." : "v2 memory_layers table not found (v1 database).";
+    return;
+  }
+  var grouped = {};
+  for (var i=0;i<allLayers.length;i++) {
+    var l = allLayers[i];
+    if (!grouped[l.layer]) grouped[l.layer] = [];
+    grouped[l.layer].push(l);
+  }
+  var layerOrder = ["working","short_term","long_term","archive"];
+  var out = "";
+  for (var li=0;li<layerOrder.length;li++) {
+    var layer = layerOrder[li];
+    var nodes = grouped[layer] || [];
+    out += "-- " + layer + " (" + nodes.length + " nodes) ";
+    for (var j=0;j<50;j++) out += "-";
+    out += "\n";
+    for (var ni=0;ni<nodes.length;ni++) {
+      var n = nodes[ni];
+      var label = n.label || "(no label)";
+      var ntype = n.node_type || "?";
+      var nm = parseMeta(n);
+      var natt = nm.attention_state || "";
+      var scope = nodeScope(n);
+      out += "  " + (n.node_id||"").slice(0,12) + "  [" + scope + "]  " + ntype + "  " + label;
+      if (natt) out += "  (" + natt + ")";
+      if (n.promoted_at) out += "  promoted " + new Date(n.promoted_at*1000).toISOString().slice(0,10);
+      out += "\n";
+    }
+    out += "\n";
+  }
+  pre.textContent = out;
+}
+
+// ── Schema ──
+function renderSchema() {
+  var tables = query("SELECT name,sql FROM sqlite_master WHERE type='table' ORDER BY name");
+  if (!tables.length) { document.getElementById("schema-pre").textContent = "No tables."; return; }
+  var out = "";
+  for (var i=0;i<tables.length;i++) {
+    var t = tables[i];
+    out += "-- " + t.name + " ";
+    for (var j=0;j<50-t.name.length;j++) out += "-";
+    out += "\n" + (t.sql||"") + "\n\n";
+    var cols = query('PRAGMA table_info("'+t.name+'")');
+    out += "  Columns: " + cols.map(function(c){return c.name+" ("+c.type+")";}).join(", ") + "\n";
+    var idxs = query('PRAGMA index_list("'+t.name+'")');
+    if (idxs.length) out += "  Indexes: " + idxs.map(function(i){return i.name;}).join(", ") + "\n";
+    out += "\n";
+  }
+  var meta = query("SELECT key,value FROM schema_meta");
+  if (meta.length) {
+    out += "-- schema_meta ----------------------------------------\n";
+    out += meta.map(function(r){return "  "+r.key+" = "+r.value;}).join("\n")+"\n";
+  }
+  document.getElementById("schema-pre").textContent = out;
+}
+
+// ── Stats panel ──
+function renderStatsPanel() {
+  if (!allNodes.length) { document.getElementById("stats-pre").textContent = "No data."; return; }
+  var tc = {}; for (var i=0;i<allNodes.length;i++) { var t=allNodes[i].node_type||"?"; tc[t]=(tc[t]||0)+1; }
+  var ec = {}; for (var i=0;i<allEdges.length;i++) { var t=allEdges[i].edge_type||"?"; ec[t]=(ec[t]||0)+1; }
+  var sc = {}; for (var i=0;i<allNodes.length;i++) { var s=allNodes[i].source||"?"; sc[s]=(sc[s]||0)+1; }
+  var st=0,si=0,cn=0; for (var i=0;i<allNodes.length;i++){if(typeof allNodes[i].trust_level==="number"){st+=allNodes[i].trust_level;cn++;}}
+  var avgT=cn?st/cn:0; cn=0; for (var i=0;i<allNodes.length;i++){if(typeof allNodes[i].importance==="number"){si+=allNodes[i].importance;cn++;}}
+  var avgI=cn?si/cn:0;
+  var sa=0; for (var i=0;i<allNodes.length;i++) sa+=allNodes[i].access_count||0;
+
+  var sorted=allNodes.slice().sort(function(a,b){return(b.access_count||0)-(a.access_count||0);});
+  function pad(s,n){while(s.length<n)s+=" ";return s;}
+
+  var out = "DATABASE: " + dbName + "\n";
+  out += "Total Nodes: " + allNodes.length + "  |  Total Edges: " + allEdges.length + "\n";
+  out += "Vectors: " + allVectors.length + "  |  Layers: " + allLayers.length + "\n\n";
+  out += "-- Nodes by Type --\n";
+  Object.keys(tc).sort(function(a,b){return tc[b]-tc[a];}).forEach(function(t){out+="  "+pad(t,16)+" "+tc[t]+"\n";});
+  out += "\n-- Scope (Core vs Agent) --\n";
+  var scCount = {CORE:0, AGENT:0};
+  for (var i=0;i<allNodes.length;i++) scCount[nodeScope(allNodes[i])]++;
+  out += "  "+pad("CORE",16)+scCount.CORE+"\n";
+  out += "  "+pad("AGENT",16)+scCount.AGENT+"\n";
+  out += "\n-- Attention States --\n";
+  var ac = {}; for (var i=0;i<allNodes.length;i++) {
+    var a = nodeAttention(allNodes[i]) || "(none)";
+    ac[a] = (ac[a]||0)+1;
+  }
+  Object.keys(ac).sort(function(a,b){return ac[b]-ac[a];}).forEach(function(a){out+="  "+pad(a,16)+" "+ac[a]+"\n";});
+  out += "\n-- Nodes per Agent --\n";
+  var agc = {}; for (var i=0;i<allNodes.length;i++) {
+    var ag = nodeAgent(allNodes[i]); if (ag) agc[ag]=(agc[ag]||0)+1;
+  }
+  if (Object.keys(agc).length) {
+    Object.keys(agc).sort(function(a,b){return agc[b]-agc[a];}).forEach(function(a){out+="  "+pad(a,16)+" "+agc[a]+"\n";});
+  } else { out += "  (no agent-scoped notes)\n"; }
+  out += "\n-- Edges by Type --\n";
+  Object.keys(ec).sort(function(a,b){return ec[b]-ec[a];}).forEach(function(t){out+="  "+pad(t,16)+" "+ec[t]+"\n";});
+  out += "\n-- Sources --\n";
+  Object.keys(sc).sort(function(a,b){return sc[b]-sc[a];}).forEach(function(s){out+="  "+pad(s,16)+" "+sc[s]+"\n";});
+  out += "\n-- Averages --\n  Trust: "+avgT.toFixed(3)+"  Imp: "+avgI.toFixed(3)+"  Access: "+(sa/allNodes.length).toFixed(1)+"\n\n";
+  out += "-- Most Accessed (top 10) --\n";
+  for (var i=0;i<Math.min(10,sorted.length);i++) {
+    var n=sorted[i]; out+="  "+(n.access_count||0)+"x  "+pad(n.node_type||"",12)+" "+(n.label||"")+"\n";
+  }
+
+  // v2: layer breakdown
+  if (allLayers.length) {
+    var lc = {}; for (var i=0;i<allLayers.length;i++) { lc[allLayers[i].layer]=(lc[allLayers[i].layer]||0)+1; }
+    out += "\n-- Memory Layers --\n";
+    var lorder = ["working","short_term","long_term","archive"];
+    for (var li=0;li<lorder.length;li++) {
+      var c = lc[lorder[li]]||0;
+      if (c) out += "  " + pad(lorder[li],16) + c + "\n";
+    }
+  }
+
+  // v2: query log count
+  var ql = query("SELECT COUNT(*) as c FROM query_log");
+  if (ql.length && ql[0].c > 0) out += "\n-- Query Log --\n  " + ql[0].c + " queries logged\n";
+
+  document.getElementById("stats-pre").textContent = out;
+}
+
+// ── Node Detail Modal ──
+function showNode(id) {
+  var row = null;
+  for (var i=0;i<allNodes.length;i++) { if (allNodes[i].node_id === id) { row = allNodes[i]; break; } }
+  if (!row) return;
+
+  var meta = parseMeta(row);
+  var layer = layerByNode[row.node_id] || null;
+  var att = nodeAttention(row);
+  var agent = nodeAgent(row);
+
+  var html = '<div class="section-title">Node</div>';
+  html += '<div class="kv-row"><span class="kv-key">ID</span><span class="kv-val mono">'+esc(row.node_id)+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Type</span><span class="kv-val">'+badge(row.node_type)+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Scope</span><span class="kv-val">'+scopeBadge(nodeScope(row))+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Attention</span><span class="kv-val">'+attBadge(att)+'</span></div>';
+  if (agent) html += '<div class="kv-row"><span class="kv-key">Agent</span><span class="kv-val mono">'+esc(agent)+'</span></div>';
+  if (layer) {
+    html += '<div class="kv-row"><span class="kv-key">Layer</span><span class="kv-val">'+layerBadge(row.node_id)+'</span></div>';
+    html += '<div class="kv-row"><span class="kv-key">Layer Order</span><span class="kv-val">'+esc(String(layer.layer_order||""))+'</span></div>';
+    if (layer.promoted_at) html += '<div class="kv-row"><span class="kv-key">Promoted</span><span class="kv-val">'+new Date((layer.promoted_at||0)*1000).toISOString()+'</span></div>';
+  }
+  html += '<div class="kv-row"><span class="kv-key">Label</span><span class="kv-val" style="font-weight:500">'+esc(row.label)+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Content</span><span class="kv-val">'+esc(row.content)+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Source</span><span class="kv-val">'+esc(row.source||"")+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Trust</span><span class="kv-val">'+(row.trust_level!=null?row.trust_level:"-")+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Importance</span><span class="kv-val">'+(row.importance!=null?row.importance:"-")+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Access</span><span class="kv-val">'+(row.access_count||0)+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Checksum</span><span class="kv-val mono">'+esc(row.checksum||"")+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Created</span><span class="kv-val">'+new Date((row.created_at||0)*1000).toISOString()+'</span></div>';
+  html += '<div class="kv-row"><span class="kv-key">Updated</span><span class="kv-val">'+new Date((row.updated_at||0)*1000).toISOString()+'</span></div>';
+
+  var mkeys = Object.keys(meta);
+  if (mkeys.length) {
+    html += '<div class="section-title">Metadata ('+mkeys.length+')</div>';
+    for (var mi=0;mi<mkeys.length;mi++) {
+      var k = mkeys[mi];
+      var v = meta[k];
+      var vs = (v && typeof v === "object") ? JSON.stringify(v) : String(v);
+      html += '<div class="kv-row"><span class="kv-key">'+esc(k)+'</span><span class="kv-val mono">'+esc(vs)+'</span></div>';
+    }
+  }
+
+  // connected edges
+  var conn = [];
+  for (var i=0;i<allEdges.length;i++) {
+    var e=allEdges[i]; if (e.from_node===id||e.to_node===id) conn.push(e);
+  }
+  if (conn.length) {
+    html += '<div class="section-title">Connected Edges ('+conn.length+')</div>';
+    for (var i=0;i<conn.length;i++) {
+      var e=conn[i];
+      var dir = e.from_node===id ? "\u2192" : "\u2190";
+      var other = e.from_node===id ? e.to_node : e.from_node;
+      var nb = null; for (var j=0;j<allNodes.length;j++){if(allNodes[j].node_id===other){nb=allNodes[j];break;}}
+      var lbl = nb ? esc(nb.label) : esc((other||"").slice(0,16));
+      html += '<div class="kv-row"><span class="kv-key" style="width:auto;min-width:100px">'+esc(e.edge_type)+" "+dir+'</span>'
+        +'<span class="kv-val">'+lbl+' <span style="color:#666;font-size:10px">('+badge(nb?nb.node_type:"?")+')</span></span></div>';
+    }
+  }
+
+  document.getElementById("modal-title").textContent = row.label||"(no label)";
+  document.getElementById("modal-body").innerHTML = html;
+  document.getElementById("modal").classList.add("show");
+}
+
+document.getElementById("modal-close-btn").onclick = function(){document.getElementById("modal").classList.remove("show");};
+document.getElementById("modal").onclick = function(e){if(e.target===e.currentTarget)document.getElementById("modal").classList.remove("show");};
+document.addEventListener("keydown",function(e){if(e.key==="Escape")document.getElementById("modal").classList.remove("show");});
+
+// ── Tabs ──
+var tabs = document.querySelectorAll(".tab");
+for (var i=0;i<tabs.length;i++) {
+  tabs[i].onclick = function() {
+    for (var j=0;j<tabs.length;j++) tabs[j].classList.remove("active");
+    var panels = document.querySelectorAll(".panel");
+    for (var j=0;j<panels.length;j++) panels[j].classList.remove("active");
+    this.classList.add("active");
+    document.getElementById("panel-"+this.dataset.panel).classList.add("active");
+    if (this.dataset.panel==="edges") renderEdges();
+  };
+}
+
+// ── Drag & Drop ──
+document.body.ondragover = function(e){e.preventDefault();};
+document.body.ondrop = function(e){
+  e.preventDefault();
+  var file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+};
+</script>
+</body>
+</html>

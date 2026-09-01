@@ -1,0 +1,2326 @@
+[
+  {
+    "timestamp": "2026-08-16 12:03:22",
+    "target_db": "D:\\opencode\\memory\\v2\\brain\\dbtesting\\core.db",
+    "duration_seconds": 7.217,
+    "snapshot_taken": "snapshot_core_20260816_120314.db",
+    "job_types": [
+      "dedup",
+      "age_prune",
+      "tiers",
+      "contradictions",
+      "discover"
+    ],
+    "results": {
+      "deduplicate": {
+        "status": "success",
+        "exact_merged": 0,
+        "semantic_merged": 1,
+        "total_merged": 1,
+        "exact_merged_agent": 0,
+        "semantic_merged_agent": 4,
+        "total_merged_agent": 4,
+        "edges_relinked": 2
+      },
+      "age_prune": {
+        "status": "success",
+        "max_unused_days": 4,
+        "importance_floor": 0.05,
+        "pruned_count": 17,
+        "removed_core": 0,
+        "removed_agent": 17,
+        "skipped_review_ready": 49,
+        "skipped_protected": 4,
+        "skipped_important": 0,
+        "skipped_connected": 0,
+        "removed_nodes": [
+          {
+            "node_id": "node_c631b2a38037459a",
+            "label": "CRON_SCHEDULE_AUDIT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_4df42cb8c70c4a25",
+            "label": "cron_mail_check",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_ef58fe587a344488",
+            "label": "model_fallback_test",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_2d99c00f2c38485c",
+            "label": "hn_scout_top_stories",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_513d8450c4e14840",
+            "label": "model_fallback_test",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_9becea5aa6d14715",
+            "label": "Agentic AI 2026 sovereignty landscape",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_ca99cf9cc33f4179",
+            "label": "AMD Strix Halo local LLM config",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_51fe065a452a400c",
+            "label": "CRON_MONITOR_REPORT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_b3f0f48b6ad74c39",
+            "label": "SOVEREIGNTY_PHASE_RUN_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_08917c5480a2435a",
+            "label": "model_fallback_test",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.1
+          },
+          {
+            "node_id": "node_461ba3fdcf4e4d09",
+            "label": "CRON_MONITOR_REPORT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.1
+          },
+          {
+            "node_id": "node_3cf7560efdc34100",
+            "label": "SOVEREIGNTY_RUN_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.1
+          },
+          {
+            "node_id": "node_1f39c36daac84a62",
+            "label": "EXPLORATION_LLAMACPP_VULKAN_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.1
+          },
+          {
+            "node_id": "node_a15634fe8a4b4a4e",
+            "label": "EXPLORATION_MEMORY_BENCHMARKS_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.1
+          },
+          {
+            "node_id": "node_8f366469351a4384",
+            "label": "BUGFIX_BASE_PATH_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.1
+          },
+          {
+            "node_id": "node_d45bbcdd62864601",
+            "label": "CRON_HEALTH_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.1
+          },
+          {
+            "node_id": "node_04180baad1f441fb",
+            "label": "EMAIL_CHECK",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.0
+          }
+        ]
+      },
+      "manage_tiers": {
+        "status": "success",
+        "promoted": 0,
+        "decayed": 46,
+        "pruned": 0,
+        "promoted_core": 0,
+        "promoted_agent": 0,
+        "decayed_core": 46,
+        "decayed_agent": 382,
+        "pruned_core": 0,
+        "pruned_agent": 0,
+        "skipped_review_ready": 0,
+        "skipped_protected": 0
+      },
+      "detect_contradictions": {
+        "status": "success",
+        "contradictions_found": 91,
+        "edges_created": 91
+      },
+      "discover_links": {
+        "status": "success",
+        "links_created": 0,
+        "links_created_core": 0,
+        "links_created_agent": 0
+      }
+    },
+    "health_after": {
+      "db_path": "D:\\opencode\\memory\\v2\\brain\\dbtesting\\core.db",
+      "db_size_bytes": 6295552,
+      "db_size_mb": 6.0,
+      "total_nodes": 735,
+      "total_edges": 5816,
+      "node_types": {
+        "AFFECT": 1,
+        "AGENT_NOTE": 621,
+        "BOUNDARY": 4,
+        "CORE_REF": 1,
+        "EVENT": 29,
+        "FACT": 59,
+        "PERSON": 1,
+        "PREFERENCE": 1,
+        "TOPIC": 18
+      },
+      "layers": {
+        "long_term": 504,
+        "working": 231
+      },
+      "core_nodes": 114,
+      "agent_note_nodes": 621,
+      "core_type_breakdown": {
+        "PERSON": 1,
+        "AFFECT": 1,
+        "FACT": 59,
+        "PREFERENCE": 1,
+        "BOUNDARY": 4,
+        "EVENT": 29,
+        "TOPIC": 18,
+        "CORE_REF": 1
+      },
+      "agent_note_type_breakdown": {
+        "AGENT_NOTE": 621
+      },
+      "snapshot_count": 2,
+      "status": "healthy"
+    },
+    "markdown_log": "2026-08-16_120322_maintenance_report.md"
+  },
+  {
+    "timestamp": "2026-08-16 12:08:22",
+    "target_db": "D:\\opencode\\memory\\v2\\brain\\dbtesting\\core.db",
+    "duration_seconds": 6.939,
+    "snapshot_taken": "snapshot_core_20260816_120815.db",
+    "job_types": [
+      "dedup",
+      "age_prune",
+      "tiers",
+      "contradictions",
+      "discover"
+    ],
+    "results": {
+      "deduplicate": {
+        "status": "success",
+        "exact_merged": 0,
+        "semantic_merged": 1,
+        "total_merged": 1,
+        "exact_merged_agent": 0,
+        "semantic_merged_agent": 4,
+        "total_merged_agent": 4,
+        "edges_relinked": 2
+      },
+      "age_prune": {
+        "status": "success",
+        "max_unused_days": 4,
+        "importance_floor": 0.05,
+        "pruned_count": 17,
+        "removed_core": 0,
+        "removed_agent": 17,
+        "skipped_review_ready": 49,
+        "skipped_protected": 4,
+        "skipped_important": 0,
+        "skipped_connected": 0,
+        "removed_nodes": [
+          {
+            "node_id": "node_c631b2a38037459a",
+            "label": "CRON_SCHEDULE_AUDIT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_4df42cb8c70c4a25",
+            "label": "cron_mail_check",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_ef58fe587a344488",
+            "label": "model_fallback_test",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_2d99c00f2c38485c",
+            "label": "hn_scout_top_stories",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_513d8450c4e14840",
+            "label": "model_fallback_test",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_9becea5aa6d14715",
+            "label": "Agentic AI 2026 sovereignty landscape",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_ca99cf9cc33f4179",
+            "label": "AMD Strix Halo local LLM config",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_51fe065a452a400c",
+            "label": "CRON_MONITOR_REPORT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_b3f0f48b6ad74c39",
+            "label": "SOVEREIGNTY_PHASE_RUN_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_08917c5480a2435a",
+            "label": "model_fallback_test",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.1
+          },
+          {
+            "node_id": "node_461ba3fdcf4e4d09",
+            "label": "CRON_MONITOR_REPORT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.1
+          },
+          {
+            "node_id": "node_3cf7560efdc34100",
+            "label": "SOVEREIGNTY_RUN_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.1
+          },
+          {
+            "node_id": "node_1f39c36daac84a62",
+            "label": "EXPLORATION_LLAMACPP_VULKAN_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.1
+          },
+          {
+            "node_id": "node_a15634fe8a4b4a4e",
+            "label": "EXPLORATION_MEMORY_BENCHMARKS_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.1
+          },
+          {
+            "node_id": "node_8f366469351a4384",
+            "label": "BUGFIX_BASE_PATH_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.1
+          },
+          {
+            "node_id": "node_d45bbcdd62864601",
+            "label": "CRON_HEALTH_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.1
+          },
+          {
+            "node_id": "node_04180baad1f441fb",
+            "label": "EMAIL_CHECK",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.0
+          }
+        ]
+      },
+      "manage_tiers": {
+        "status": "success",
+        "promoted": 0,
+        "decayed": 46,
+        "pruned": 0,
+        "promoted_core": 0,
+        "promoted_agent": 0,
+        "decayed_core": 46,
+        "decayed_agent": 382,
+        "pruned_core": 0,
+        "pruned_agent": 0,
+        "skipped_review_ready": 0,
+        "skipped_protected": 0
+      },
+      "detect_contradictions": {
+        "status": "success",
+        "contradictions_found": 91,
+        "edges_created": 91
+      },
+      "discover_links": {
+        "status": "success",
+        "links_created": 0,
+        "links_created_core": 0,
+        "links_created_agent": 0
+      }
+    },
+    "health_after": {
+      "db_path": "D:\\opencode\\memory\\v2\\brain\\dbtesting\\core.db",
+      "db_size_bytes": 6365184,
+      "db_size_mb": 6.07,
+      "total_nodes": 735,
+      "total_edges": 5816,
+      "node_types": {
+        "AFFECT": 1,
+        "AGENT_NOTE": 621,
+        "BOUNDARY": 4,
+        "CORE_REF": 1,
+        "EVENT": 29,
+        "FACT": 59,
+        "PERSON": 1,
+        "PREFERENCE": 1,
+        "TOPIC": 18
+      },
+      "layers": {
+        "long_term": 504,
+        "working": 231
+      },
+      "core_nodes": 114,
+      "agent_note_nodes": 621,
+      "core_type_breakdown": {
+        "PERSON": 1,
+        "AFFECT": 1,
+        "FACT": 59,
+        "PREFERENCE": 1,
+        "BOUNDARY": 4,
+        "EVENT": 29,
+        "TOPIC": 18,
+        "CORE_REF": 1
+      },
+      "agent_note_type_breakdown": {
+        "AGENT_NOTE": 621
+      },
+      "snapshot_count": 1,
+      "status": "healthy"
+    },
+    "markdown_log": "2026-08-16_120822_maintenance_report.md"
+  },
+  {
+    "timestamp": "2026-08-16 12:35:24",
+    "target_db": "D:\\opencode\\memory\\v2\\brain\\dbtesting\\core.db",
+    "duration_seconds": 6.23,
+    "snapshot_taken": "snapshot_core_20260816_123518.db",
+    "job_types": [
+      "dedup",
+      "age_prune",
+      "tiers",
+      "contradictions",
+      "discover"
+    ],
+    "results": {
+      "deduplicate": {
+        "status": "success",
+        "exact_merged": 0,
+        "semantic_merged": 1,
+        "total_merged": 1,
+        "exact_merged_agent": 0,
+        "semantic_merged_agent": 1,
+        "total_merged_agent": 1,
+        "edges_relinked": 3,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "age_prune": {
+        "status": "success",
+        "max_unused_days": 4,
+        "importance_floor": 0.05,
+        "pruned_count": 0,
+        "removed_core": 0,
+        "removed_agent": 0,
+        "skipped_review_ready": 49,
+        "skipped_protected": 4,
+        "skipped_important": 0,
+        "skipped_connected": 0,
+        "removed_nodes": [],
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "manage_tiers": {
+        "status": "success",
+        "promoted": 0,
+        "decayed": 46,
+        "pruned": 0,
+        "promoted_core": 0,
+        "promoted_agent": 0,
+        "decayed_core": 46,
+        "decayed_agent": 382,
+        "pruned_core": 0,
+        "pruned_agent": 0,
+        "skipped_review_ready": 0,
+        "skipped_protected": 0,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "detect_contradictions": {
+        "status": "success",
+        "contradictions_found": 87,
+        "edges_created": 87,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "discover_links": {
+        "status": "success",
+        "links_created": 0,
+        "links_created_core": 0,
+        "links_created_agent": 0,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "vector_index_rebuild": {
+        "status": "success",
+        "vectors_rebuilt": 733,
+        "duration_s": 0.38
+      }
+    },
+    "health_after": {
+      "db_path": "D:\\opencode\\memory\\v2\\brain\\dbtesting\\core.db",
+      "db_size_bytes": 6365184,
+      "db_size_mb": 6.07,
+      "total_nodes": 733,
+      "total_edges": 5790,
+      "node_types": {
+        "AFFECT": 1,
+        "AGENT_NOTE": 620,
+        "BOUNDARY": 4,
+        "CORE_REF": 1,
+        "EVENT": 29,
+        "FACT": 58,
+        "PERSON": 1,
+        "PREFERENCE": 1,
+        "TOPIC": 18
+      },
+      "layers": {
+        "long_term": 504,
+        "working": 229
+      },
+      "core_nodes": 113,
+      "agent_note_nodes": 620,
+      "core_type_breakdown": {
+        "PERSON": 1,
+        "AFFECT": 1,
+        "FACT": 58,
+        "PREFERENCE": 1,
+        "BOUNDARY": 4,
+        "EVENT": 29,
+        "TOPIC": 18,
+        "CORE_REF": 1
+      },
+      "agent_note_type_breakdown": {
+        "AGENT_NOTE": 620
+      },
+      "snapshot_count": 2,
+      "status": "healthy"
+    },
+    "markdown_log": "2026-08-16_123524_maintenance_report.md"
+  },
+  {
+    "timestamp": "2026-08-16 12:37:00",
+    "target_db": "D:\\opencode\\memory\\v2\\brain\\dbtesting\\core.db",
+    "duration_seconds": 7.504,
+    "snapshot_taken": "snapshot_core_20260816_123653.db",
+    "job_types": [
+      "dedup",
+      "age_prune",
+      "tiers",
+      "contradictions",
+      "discover"
+    ],
+    "results": {
+      "deduplicate": {
+        "status": "success",
+        "exact_merged": 0,
+        "semantic_merged": 1,
+        "total_merged": 1,
+        "exact_merged_agent": 0,
+        "semantic_merged_agent": 4,
+        "total_merged_agent": 4,
+        "edges_relinked": 2,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 12,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 296,
+          "node_index_removed": 8215,
+          "total_removed": 8523
+        }
+      },
+      "age_prune": {
+        "status": "success",
+        "max_unused_days": 4,
+        "importance_floor": 0.05,
+        "pruned_count": 17,
+        "removed_core": 0,
+        "removed_agent": 17,
+        "skipped_review_ready": 49,
+        "skipped_protected": 4,
+        "skipped_important": 0,
+        "skipped_connected": 0,
+        "removed_nodes": [
+          {
+            "node_id": "node_c631b2a38037459a",
+            "label": "CRON_SCHEDULE_AUDIT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_4df42cb8c70c4a25",
+            "label": "cron_mail_check",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_ef58fe587a344488",
+            "label": "model_fallback_test",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_2d99c00f2c38485c",
+            "label": "hn_scout_top_stories",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_513d8450c4e14840",
+            "label": "model_fallback_test",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_9becea5aa6d14715",
+            "label": "Agentic AI 2026 sovereignty landscape",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_ca99cf9cc33f4179",
+            "label": "AMD Strix Halo local LLM config",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_51fe065a452a400c",
+            "label": "CRON_MONITOR_REPORT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_b3f0f48b6ad74c39",
+            "label": "SOVEREIGNTY_PHASE_RUN_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_08917c5480a2435a",
+            "label": "model_fallback_test",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.2
+          },
+          {
+            "node_id": "node_461ba3fdcf4e4d09",
+            "label": "CRON_MONITOR_REPORT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.2
+          },
+          {
+            "node_id": "node_3cf7560efdc34100",
+            "label": "SOVEREIGNTY_RUN_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.2
+          },
+          {
+            "node_id": "node_1f39c36daac84a62",
+            "label": "EXPLORATION_LLAMACPP_VULKAN_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.2
+          },
+          {
+            "node_id": "node_a15634fe8a4b4a4e",
+            "label": "EXPLORATION_MEMORY_BENCHMARKS_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.2
+          },
+          {
+            "node_id": "node_8f366469351a4384",
+            "label": "BUGFIX_BASE_PATH_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.2
+          },
+          {
+            "node_id": "node_d45bbcdd62864601",
+            "label": "CRON_HEALTH_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.2
+          },
+          {
+            "node_id": "node_04180baad1f441fb",
+            "label": "EMAIL_CHECK",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.0
+          }
+        ],
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "manage_tiers": {
+        "status": "success",
+        "promoted": 0,
+        "decayed": 46,
+        "pruned": 0,
+        "promoted_core": 0,
+        "promoted_agent": 0,
+        "decayed_core": 46,
+        "decayed_agent": 382,
+        "pruned_core": 0,
+        "pruned_agent": 0,
+        "skipped_review_ready": 0,
+        "skipped_protected": 0,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "detect_contradictions": {
+        "status": "success",
+        "contradictions_found": 91,
+        "edges_created": 91,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "discover_links": {
+        "status": "success",
+        "links_created": 0,
+        "links_created_core": 0,
+        "links_created_agent": 0,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "vector_index_rebuild": {
+        "status": "success",
+        "vectors_rebuilt": 735,
+        "duration_s": 0.413
+      }
+    },
+    "health_after": {
+      "db_path": "D:\\opencode\\memory\\v2\\brain\\dbtesting\\core.db",
+      "db_size_bytes": 6295552,
+      "db_size_mb": 6.0,
+      "total_nodes": 735,
+      "total_edges": 5804,
+      "node_types": {
+        "AFFECT": 1,
+        "AGENT_NOTE": 621,
+        "BOUNDARY": 4,
+        "CORE_REF": 1,
+        "EVENT": 29,
+        "FACT": 59,
+        "PERSON": 1,
+        "PREFERENCE": 1,
+        "TOPIC": 18
+      },
+      "layers": {
+        "long_term": 504,
+        "working": 231
+      },
+      "core_nodes": 114,
+      "agent_note_nodes": 621,
+      "core_type_breakdown": {
+        "PERSON": 1,
+        "AFFECT": 1,
+        "FACT": 59,
+        "PREFERENCE": 1,
+        "BOUNDARY": 4,
+        "EVENT": 29,
+        "TOPIC": 18,
+        "CORE_REF": 1
+      },
+      "agent_note_type_breakdown": {
+        "AGENT_NOTE": 621
+      },
+      "snapshot_count": 3,
+      "status": "healthy"
+    },
+    "markdown_log": "2026-08-16_123700_maintenance_report.md"
+  },
+  {
+    "timestamp": "2026-08-16 12:47:52",
+    "target_db": "D:\\opencode\\memory\\v2\\brain\\dbtesting\\core.db",
+    "duration_seconds": 7.777,
+    "snapshot_taken": "snapshot_core_20260816_124745.db",
+    "job_types": [
+      "dedup",
+      "age_prune",
+      "tiers",
+      "contradictions",
+      "discover"
+    ],
+    "results": {
+      "deduplicate": {
+        "status": "success",
+        "exact_merged": 0,
+        "semantic_merged": 1,
+        "total_merged": 1,
+        "exact_merged_agent": 0,
+        "semantic_merged_agent": 1,
+        "total_merged_agent": 1,
+        "edges_relinked": 3,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "age_prune": {
+        "status": "success",
+        "max_unused_days": 2,
+        "importance_floor": 0.05,
+        "pruned_count": 37,
+        "removed_core": 0,
+        "removed_agent": 37,
+        "skipped_review_ready": 51,
+        "skipped_protected": 18,
+        "skipped_important": 7,
+        "skipped_connected": 0,
+        "removed_nodes": [
+          {
+            "node_id": "node_c7651af1f51a4418",
+            "label": "exploration_moe_optimization",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.9
+          },
+          {
+            "node_id": "node_f0237f0ccdc746bc",
+            "label": "exploration_memory_architectures",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.9
+          },
+          {
+            "node_id": "node_76c60695b3cb4e36",
+            "label": "workspace_audit",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.9
+          },
+          {
+            "node_id": "node_b9bac174e8fe44ab",
+            "label": "cron_health",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.9
+          },
+          {
+            "node_id": "node_07a58efbecee4567",
+            "label": "production_target_amd",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.9
+          },
+          {
+            "node_id": "node_1c342aada604407a",
+            "label": "CRON_MONITOR_REPORT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.9
+          },
+          {
+            "node_id": "node_1beb442a538a4c46",
+            "label": "scout_hn_empty",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.9
+          },
+          {
+            "node_id": "node_6bce846889e64215",
+            "label": "EXPLORATION_TOPICS",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.7
+          },
+          {
+            "node_id": "node_91c42693ab2d4d60",
+            "label": "CLIENT_HYGIENE_FIX",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.7
+          },
+          {
+            "node_id": "node_1a33242dee49454e",
+            "label": "LOG_ELIMINATION",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.7
+          },
+          {
+            "node_id": "node_51ac3e19c924438a",
+            "label": "OPENCODE_STATUS",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.7
+          },
+          {
+            "node_id": "node_3758338032264a35",
+            "label": "fallback_test_result",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.7
+          },
+          {
+            "node_id": "node_fc432111ccba4166",
+            "label": "cron_decision",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.7
+          },
+          {
+            "node_id": "node_bf5df30b277141f6",
+            "label": "hn_scout",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.7
+          },
+          {
+            "node_id": "node_6850ff91ed954e50",
+            "label": "fallback_test",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.6
+          },
+          {
+            "node_id": "node_2094188c440348e7",
+            "label": "SOVEREIGNTY_WEB_EXPLORATION",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.5
+          },
+          {
+            "node_id": "node_a4b43ed384784074",
+            "label": "LOG_FILE_AUDIT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.5
+          },
+          {
+            "node_id": "node_84caf3eb4c684478",
+            "label": "SOVEREIGNTY_ACTIONS",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.5
+          },
+          {
+            "node_id": "node_e4be3e70ec7c4d9f",
+            "label": "model_fallback_test_2026-08-13",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.5
+          },
+          {
+            "node_id": "node_d7c5a5171cc54e61",
+            "label": "SOVEREIGNTY_RUN_2026-08-13",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.9
+          },
+          {
+            "node_id": "node_34622e3a84664cb0",
+            "label": "WEB_EXPLORE_RYZEN_AI_MAX_VULKAN",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.9
+          },
+          {
+            "node_id": "node_f5b4cebf25d74883",
+            "label": "WEB_EXPLORE_PROCEDURAL_MEMORY",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.3
+          },
+          {
+            "node_id": "node_49fe3cbe736641a0",
+            "label": "TODO_FIX_CRON_SUPERVISOR_SILENT_FAILURE",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.3
+          },
+          {
+            "node_id": "node_0cc6c133f36f4341",
+            "label": "fallback_test_gemini_2026-08-13",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.9
+          },
+          {
+            "node_id": "node_f05fb284eb3d4bb1",
+            "label": "CRON_MONITOR_REPORT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.9
+          },
+          {
+            "node_id": "node_44136918358b425f",
+            "label": "agentmail_poll",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.9
+          },
+          {
+            "node_id": "node_1a5a7a7d06b34a0c",
+            "label": "SOVEREIGNTY_RUN_2026-08-13",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.8
+          },
+          {
+            "node_id": "node_ca370f2613b9448e",
+            "label": "CRON_FIX_SOVEREIGNTY_CONTEXT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.8
+          },
+          {
+            "node_id": "node_915d93cf9fa146e0",
+            "label": "SOVEREIGNTY_REPORT_2026-08-13",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.8
+          },
+          {
+            "node_id": "node_c6263d5ab3c84989",
+            "label": "cron_ping_20260813",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.7
+          },
+          {
+            "node_id": "node_dc93a6c40ec849aa",
+            "label": "model_fallback_check",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.7
+          },
+          {
+            "node_id": "node_1cc649613bfd42d7",
+            "label": "cron_agentmail_check",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.6
+          },
+          {
+            "node_id": "node_5acedc345d1743a9",
+            "label": "fallback_test_gemini",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.6
+          },
+          {
+            "node_id": "node_5595486101c94588",
+            "label": "cron_ping_20260813_autonomous",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.5
+          },
+          {
+            "node_id": "node_91b72df0ff784ccd",
+            "label": "cron_autonomous_ping",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.5
+          },
+          {
+            "node_id": "node_9297607eb4f340cc",
+            "label": "SCHEMA_TEST",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.4
+          },
+          {
+            "node_id": "node_f770e39bd74742df",
+            "label": "AGENT_MAIL_CHECK",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.4
+          }
+        ],
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "manage_tiers": {
+        "status": "success",
+        "promoted": 0,
+        "decayed": 46,
+        "pruned": 0,
+        "promoted_core": 0,
+        "promoted_agent": 0,
+        "decayed_core": 46,
+        "decayed_agent": 382,
+        "pruned_core": 0,
+        "pruned_agent": 0,
+        "skipped_review_ready": 0,
+        "skipped_protected": 0,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "detect_contradictions": {
+        "status": "success",
+        "contradictions_found": 87,
+        "edges_created": 87,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "discover_links": {
+        "status": "success",
+        "links_created": 0,
+        "links_created_core": 0,
+        "links_created_agent": 0,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "vector_index_rebuild": {
+        "status": "success",
+        "vectors_rebuilt": 696,
+        "duration_s": 0.43
+      }
+    },
+    "health_after": {
+      "db_path": "D:\\opencode\\memory\\v2\\brain\\dbtesting\\core.db",
+      "db_size_bytes": 6295552,
+      "db_size_mb": 6.0,
+      "total_nodes": 696,
+      "total_edges": 5505,
+      "node_types": {
+        "AFFECT": 1,
+        "AGENT_NOTE": 583,
+        "BOUNDARY": 4,
+        "CORE_REF": 1,
+        "EVENT": 29,
+        "FACT": 58,
+        "PERSON": 1,
+        "PREFERENCE": 1,
+        "TOPIC": 18
+      },
+      "layers": {
+        "long_term": 504,
+        "working": 192
+      },
+      "core_nodes": 113,
+      "agent_note_nodes": 583,
+      "core_type_breakdown": {
+        "PERSON": 1,
+        "AFFECT": 1,
+        "FACT": 58,
+        "PREFERENCE": 1,
+        "BOUNDARY": 4,
+        "EVENT": 29,
+        "TOPIC": 18,
+        "CORE_REF": 1
+      },
+      "agent_note_type_breakdown": {
+        "AGENT_NOTE": 583
+      },
+      "snapshot_count": 4,
+      "status": "healthy"
+    },
+    "markdown_log": "2026-08-16_124752_maintenance_report.md"
+  },
+  {
+    "timestamp": "2026-08-16 12:56:39",
+    "target_db": "D:\\opencode\\memory\\v2\\brain\\dbtesting\\core.db",
+    "duration_seconds": 7.736,
+    "snapshot_taken": "snapshot_core_20260816_125632.db",
+    "job_types": [
+      "dedup",
+      "age_prune",
+      "tiers",
+      "contradictions",
+      "discover"
+    ],
+    "results": {
+      "deduplicate": {
+        "status": "success",
+        "exact_merged": 0,
+        "semantic_merged": 1,
+        "total_merged": 1,
+        "exact_merged_agent": 0,
+        "semantic_merged_agent": 4,
+        "total_merged_agent": 4,
+        "edges_relinked": 2,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 12,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 296,
+          "node_index_removed": 8215,
+          "total_removed": 8523
+        }
+      },
+      "age_prune": {
+        "status": "success",
+        "max_unused_days": 2,
+        "importance_floor": 0.05,
+        "pruned_count": 54,
+        "removed_core": 0,
+        "removed_agent": 54,
+        "skipped_review_ready": 51,
+        "skipped_protected": 18,
+        "skipped_important": 7,
+        "skipped_connected": 0,
+        "removed_nodes": [
+          {
+            "node_id": "node_c631b2a38037459a",
+            "label": "CRON_SCHEDULE_AUDIT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_4df42cb8c70c4a25",
+            "label": "cron_mail_check",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_ef58fe587a344488",
+            "label": "model_fallback_test",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_2d99c00f2c38485c",
+            "label": "hn_scout_top_stories",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_513d8450c4e14840",
+            "label": "model_fallback_test",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_9becea5aa6d14715",
+            "label": "Agentic AI 2026 sovereignty landscape",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_ca99cf9cc33f4179",
+            "label": "AMD Strix Halo local LLM config",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_51fe065a452a400c",
+            "label": "CRON_MONITOR_REPORT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_b3f0f48b6ad74c39",
+            "label": "SOVEREIGNTY_PHASE_RUN_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.3
+          },
+          {
+            "node_id": "node_08917c5480a2435a",
+            "label": "model_fallback_test",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.2
+          },
+          {
+            "node_id": "node_461ba3fdcf4e4d09",
+            "label": "CRON_MONITOR_REPORT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.2
+          },
+          {
+            "node_id": "node_3cf7560efdc34100",
+            "label": "SOVEREIGNTY_RUN_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.2
+          },
+          {
+            "node_id": "node_1f39c36daac84a62",
+            "label": "EXPLORATION_LLAMACPP_VULKAN_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.2
+          },
+          {
+            "node_id": "node_a15634fe8a4b4a4e",
+            "label": "EXPLORATION_MEMORY_BENCHMARKS_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.2
+          },
+          {
+            "node_id": "node_8f366469351a4384",
+            "label": "BUGFIX_BASE_PATH_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.2
+          },
+          {
+            "node_id": "node_d45bbcdd62864601",
+            "label": "CRON_HEALTH_2026-08-12",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.2
+          },
+          {
+            "node_id": "node_04180baad1f441fb",
+            "label": "EMAIL_CHECK",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.1
+          },
+          {
+            "node_id": "node_c7651af1f51a4418",
+            "label": "exploration_moe_optimization",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.0
+          },
+          {
+            "node_id": "node_f0237f0ccdc746bc",
+            "label": "exploration_memory_architectures",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.0
+          },
+          {
+            "node_id": "node_76c60695b3cb4e36",
+            "label": "workspace_audit",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.0
+          },
+          {
+            "node_id": "node_b9bac174e8fe44ab",
+            "label": "cron_health",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.0
+          },
+          {
+            "node_id": "node_07a58efbecee4567",
+            "label": "production_target_amd",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.0
+          },
+          {
+            "node_id": "node_1c342aada604407a",
+            "label": "CRON_MONITOR_REPORT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 4.0
+          },
+          {
+            "node_id": "node_1beb442a538a4c46",
+            "label": "scout_hn_empty",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.9
+          },
+          {
+            "node_id": "node_6bce846889e64215",
+            "label": "EXPLORATION_TOPICS",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.7
+          },
+          {
+            "node_id": "node_91c42693ab2d4d60",
+            "label": "CLIENT_HYGIENE_FIX",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.7
+          },
+          {
+            "node_id": "node_1a33242dee49454e",
+            "label": "LOG_ELIMINATION",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.7
+          },
+          {
+            "node_id": "node_51ac3e19c924438a",
+            "label": "OPENCODE_STATUS",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.7
+          },
+          {
+            "node_id": "node_3758338032264a35",
+            "label": "fallback_test_result",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.7
+          },
+          {
+            "node_id": "node_fc432111ccba4166",
+            "label": "cron_decision",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.7
+          },
+          {
+            "node_id": "node_bf5df30b277141f6",
+            "label": "hn_scout",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.7
+          },
+          {
+            "node_id": "node_6850ff91ed954e50",
+            "label": "fallback_test",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.6
+          },
+          {
+            "node_id": "node_2094188c440348e7",
+            "label": "SOVEREIGNTY_WEB_EXPLORATION",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.5
+          },
+          {
+            "node_id": "node_a4b43ed384784074",
+            "label": "LOG_FILE_AUDIT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.5
+          },
+          {
+            "node_id": "node_84caf3eb4c684478",
+            "label": "SOVEREIGNTY_ACTIONS",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.5
+          },
+          {
+            "node_id": "node_e4be3e70ec7c4d9f",
+            "label": "model_fallback_test_2026-08-13",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.5
+          },
+          {
+            "node_id": "node_d7c5a5171cc54e61",
+            "label": "SOVEREIGNTY_RUN_2026-08-13",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.9
+          },
+          {
+            "node_id": "node_34622e3a84664cb0",
+            "label": "WEB_EXPLORE_RYZEN_AI_MAX_VULKAN",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.9
+          },
+          {
+            "node_id": "node_f5b4cebf25d74883",
+            "label": "WEB_EXPLORE_PROCEDURAL_MEMORY",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.3
+          },
+          {
+            "node_id": "node_49fe3cbe736641a0",
+            "label": "TODO_FIX_CRON_SUPERVISOR_SILENT_FAILURE",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 3.3
+          },
+          {
+            "node_id": "node_0cc6c133f36f4341",
+            "label": "fallback_test_gemini_2026-08-13",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.9
+          },
+          {
+            "node_id": "node_f05fb284eb3d4bb1",
+            "label": "CRON_MONITOR_REPORT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.9
+          },
+          {
+            "node_id": "node_44136918358b425f",
+            "label": "agentmail_poll",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.9
+          },
+          {
+            "node_id": "node_1a5a7a7d06b34a0c",
+            "label": "SOVEREIGNTY_RUN_2026-08-13",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.8
+          },
+          {
+            "node_id": "node_ca370f2613b9448e",
+            "label": "CRON_FIX_SOVEREIGNTY_CONTEXT",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.8
+          },
+          {
+            "node_id": "node_915d93cf9fa146e0",
+            "label": "SOVEREIGNTY_REPORT_2026-08-13",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.8
+          },
+          {
+            "node_id": "node_c6263d5ab3c84989",
+            "label": "cron_ping_20260813",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.7
+          },
+          {
+            "node_id": "node_dc93a6c40ec849aa",
+            "label": "model_fallback_check",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.7
+          },
+          {
+            "node_id": "node_1cc649613bfd42d7",
+            "label": "cron_agentmail_check",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.7
+          },
+          {
+            "node_id": "node_5acedc345d1743a9",
+            "label": "fallback_test_gemini",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.6
+          },
+          {
+            "node_id": "node_5595486101c94588",
+            "label": "cron_ping_20260813_autonomous",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.6
+          },
+          {
+            "node_id": "node_91b72df0ff784ccd",
+            "label": "cron_autonomous_ping",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.5
+          },
+          {
+            "node_id": "node_9297607eb4f340cc",
+            "label": "SCHEMA_TEST",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.4
+          },
+          {
+            "node_id": "node_f770e39bd74742df",
+            "label": "AGENT_MAIL_CHECK",
+            "node_type": "AGENT_NOTE",
+            "scope": "agent",
+            "age_days": 2.4
+          }
+        ],
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "manage_tiers": {
+        "status": "success",
+        "promoted": 0,
+        "decayed": 46,
+        "pruned": 0,
+        "promoted_core": 0,
+        "promoted_agent": 0,
+        "decayed_core": 46,
+        "decayed_agent": 385,
+        "pruned_core": 0,
+        "pruned_agent": 0,
+        "skipped_review_ready": 0,
+        "skipped_protected": 0,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "detect_contradictions": {
+        "status": "success",
+        "contradictions_found": 91,
+        "edges_created": 91,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "discover_links": {
+        "status": "success",
+        "links_created": 0,
+        "links_created_core": 0,
+        "links_created_agent": 0,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "vector_index_rebuild": {
+        "status": "success",
+        "vectors_rebuilt": 698,
+        "duration_s": 0.562
+      }
+    },
+    "health_after": {
+      "db_path": "D:\\opencode\\memory\\v2\\brain\\dbtesting\\core.db",
+      "db_size_bytes": 6295552,
+      "db_size_mb": 6.0,
+      "total_nodes": 698,
+      "total_edges": 5519,
+      "node_types": {
+        "AFFECT": 1,
+        "AGENT_NOTE": 584,
+        "BOUNDARY": 4,
+        "CORE_REF": 1,
+        "EVENT": 29,
+        "FACT": 59,
+        "PERSON": 1,
+        "PREFERENCE": 1,
+        "TOPIC": 18
+      },
+      "layers": {
+        "long_term": 504,
+        "working": 194
+      },
+      "core_nodes": 114,
+      "agent_note_nodes": 584,
+      "core_type_breakdown": {
+        "PERSON": 1,
+        "AFFECT": 1,
+        "FACT": 59,
+        "PREFERENCE": 1,
+        "BOUNDARY": 4,
+        "EVENT": 29,
+        "TOPIC": 18,
+        "CORE_REF": 1
+      },
+      "agent_note_type_breakdown": {
+        "AGENT_NOTE": 584
+      },
+      "snapshot_count": 1,
+      "status": "healthy"
+    },
+    "markdown_log": "2026-08-16_125639_maintenance_report.md"
+  },
+  {
+    "timestamp": "2026-08-16 13:31:13",
+    "target_db": "D:\\opencode\\memory\\v2\\brain\\dbtesting\\core.db",
+    "duration_seconds": 6.692,
+    "snapshot_taken": "snapshot_core_20260816_133106.db",
+    "job_types": [
+      "dedup",
+      "age_prune",
+      "tiers",
+      "contradictions",
+      "discover"
+    ],
+    "results": {
+      "deduplicate": {
+        "status": "success",
+        "exact_merged": 0,
+        "semantic_merged": 1,
+        "total_merged": 1,
+        "exact_merged_agent": 0,
+        "semantic_merged_agent": 2,
+        "total_merged_agent": 2,
+        "edges_relinked": 3,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "age_prune": {
+        "status": "success",
+        "max_unused_days": 2,
+        "importance_floor": 0.05,
+        "pruned_count": 0,
+        "removed_core": 0,
+        "removed_agent": 0,
+        "skipped_review_ready": 51,
+        "skipped_protected": 18,
+        "skipped_important": 7,
+        "skipped_connected": 0,
+        "removed_nodes": [],
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "manage_tiers": {
+        "status": "success",
+        "promoted": 0,
+        "decayed": 46,
+        "pruned": 0,
+        "promoted_core": 0,
+        "promoted_agent": 0,
+        "decayed_core": 46,
+        "decayed_agent": 382,
+        "pruned_core": 0,
+        "pruned_agent": 0,
+        "skipped_review_ready": 0,
+        "skipped_protected": 0,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "detect_contradictions": {
+        "status": "success",
+        "contradictions_found": 87,
+        "edges_created": 87,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "discover_links": {
+        "status": "success",
+        "links_created": 0,
+        "links_created_core": 0,
+        "links_created_agent": 0,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "vector_index_rebuild": {
+        "status": "success",
+        "vectors_rebuilt": 695,
+        "duration_s": 0.406
+      }
+    },
+    "health_after": {
+      "db_path": "D:\\opencode\\memory\\v2\\brain\\dbtesting\\core.db",
+      "db_size_bytes": 6295552,
+      "db_size_mb": 6.0,
+      "total_nodes": 695,
+      "total_edges": 5503,
+      "node_types": {
+        "AFFECT": 1,
+        "AGENT_NOTE": 582,
+        "BOUNDARY": 4,
+        "CORE_REF": 1,
+        "EVENT": 29,
+        "FACT": 58,
+        "PERSON": 1,
+        "PREFERENCE": 1,
+        "TOPIC": 18
+      },
+      "layers": {
+        "long_term": 504,
+        "working": 191
+      },
+      "core_nodes": 113,
+      "agent_note_nodes": 582,
+      "core_type_breakdown": {
+        "PERSON": 1,
+        "AFFECT": 1,
+        "FACT": 58,
+        "PREFERENCE": 1,
+        "BOUNDARY": 4,
+        "EVENT": 29,
+        "TOPIC": 18,
+        "CORE_REF": 1
+      },
+      "agent_note_type_breakdown": {
+        "AGENT_NOTE": 582
+      },
+      "snapshot_count": 2,
+      "status": "healthy"
+    },
+    "markdown_log": "2026-08-16_133113_maintenance_report.md"
+  },
+  {
+    "timestamp": "2026-08-26 17:24:47",
+    "target_db": "D:\\opencode\\memory\\v2\\memory_testing\\core.db",
+    "duration_seconds": 2.716,
+    "snapshot_taken": null,
+    "job_types": [
+      "dedup",
+      "age_prune",
+      "tiers",
+      "contradictions",
+      "discover"
+    ],
+    "results": {
+      "deduplicate": {
+        "status": "success",
+        "exact_merged": 0,
+        "semantic_merged": 0,
+        "total_merged": 0,
+        "exact_merged_agent": 0,
+        "semantic_merged_agent": 1,
+        "total_merged_agent": 1,
+        "edges_relinked": 0,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "age_prune": {
+        "status": "success",
+        "max_unused_days": 4,
+        "importance_floor": 0.05,
+        "pruned_count": 0,
+        "removed_core": 0,
+        "removed_agent": 0,
+        "skipped_review_ready": 0,
+        "skipped_protected": 6,
+        "skipped_important": 3,
+        "skipped_connected": 0,
+        "removed_nodes": [],
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "manage_tiers": {
+        "status": "success",
+        "promoted": 0,
+        "decayed": 23,
+        "pruned": 0,
+        "promoted_core": 0,
+        "promoted_agent": 0,
+        "decayed_core": 23,
+        "decayed_agent": 31,
+        "pruned_core": 0,
+        "pruned_agent": 0,
+        "skipped_review_ready": 0,
+        "skipped_protected": 0,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "detect_contradictions": {
+        "status": "success",
+        "contradictions_found": 116,
+        "edges_created": 116,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "discover_links": {
+        "status": "success",
+        "links_created": 0,
+        "links_created_core": 0,
+        "links_created_agent": 0,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      },
+      "vector_index_rebuild": {
+        "status": "success",
+        "vectors_rebuilt": 337,
+        "duration_s": 0.331
+      }
+    },
+    "health_after": {
+      "db_path": "D:\\opencode\\memory\\v2\\memory_testing\\core.db",
+      "db_size_bytes": 3022848,
+      "db_size_mb": 2.88,
+      "total_nodes": 337,
+      "total_edges": 2038,
+      "node_types": {
+        "AFFECT": 1,
+        "AGENT_NOTE": 240,
+        "BOUNDARY": 4,
+        "CORE_REF": 1,
+        "EVENT": 31,
+        "FACT": 38,
+        "PERSON": 1,
+        "PREFERENCE": 1,
+        "TOPIC": 20
+      },
+      "layers": {
+        "long_term": 225,
+        "working": 112
+      },
+      "core_nodes": 97,
+      "agent_note_nodes": 240,
+      "core_type_breakdown": {
+        "PERSON": 1,
+        "AFFECT": 1,
+        "FACT": 38,
+        "PREFERENCE": 1,
+        "BOUNDARY": 4,
+        "TOPIC": 20,
+        "EVENT": 31,
+        "CORE_REF": 1
+      },
+      "agent_note_type_breakdown": {
+        "AGENT_NOTE": 240
+      },
+      "snapshot_count": 1,
+      "bloat": {
+        "page_count": 738,
+        "page_size": 4096,
+        "freelist_count": 5,
+        "freelist_pct": 0.7,
+        "needs_vacuum": false
+      },
+      "ephemeral": {
+        "FEED_SNAPSHOT": 3,
+        "RUNTIME_SAMPLE": 3,
+        "TIME_ENTRY": 2,
+        "DAILY_STATE": 3,
+        "CRON_SUPERVISOR_REPORT": 2,
+        "BRAIN_MAINTENANCE_REPORT": 3,
+        "BRAIN_HISTORY": 2,
+        "_total_ephemeral_labels": 18,
+        "_json_log_nodes": 23,
+        "_keep_last": 3,
+        "_max_age_days": 7
+      },
+      "contradicts_total": 143,
+      "status": "healthy"
+    },
+    "markdown_log": "2026-08-26_172447_maintenance_report.md"
+  },
+  {
+    "timestamp": "2026-08-28 16:22:04",
+    "target_db": "D:\\opencode\\memory\\v2\\memory_testing\\core.db",
+    "duration_seconds": 0.33,
+    "snapshot_taken": null,
+    "job_types": [
+      "contradictions"
+    ],
+    "results": {
+      "detect_contradictions": {
+        "status": "success",
+        "contradictions_found": 9,
+        "edges_created": 9,
+        "edges_ignored": 0,
+        "pending": 9,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      }
+    },
+    "health_after": {
+      "db_path": "D:\\opencode\\memory\\v2\\memory_testing\\core.db",
+      "db_size_bytes": 2981888,
+      "db_size_mb": 2.84,
+      "total_nodes": 340,
+      "total_edges": 2042,
+      "node_types": {
+        "AFFECT": 1,
+        "AGENT_NOTE": 244,
+        "BOUNDARY": 4,
+        "CORE_REF": 1,
+        "EVENT": 29,
+        "FACT": 39,
+        "PERSON": 1,
+        "PREFERENCE": 1,
+        "TOPIC": 20
+      },
+      "layers": {
+        "long_term": 222,
+        "working": 118
+      },
+      "core_nodes": 96,
+      "agent_note_nodes": 244,
+      "core_type_breakdown": {
+        "PERSON": 1,
+        "AFFECT": 1,
+        "FACT": 39,
+        "PREFERENCE": 1,
+        "BOUNDARY": 4,
+        "TOPIC": 20,
+        "EVENT": 29,
+        "CORE_REF": 1
+      },
+      "agent_note_type_breakdown": {
+        "AGENT_NOTE": 244
+      },
+      "snapshot_count": 5,
+      "bloat": {
+        "page_count": 728,
+        "page_size": 4096,
+        "freelist_count": 2,
+        "freelist_pct": 0.3,
+        "needs_vacuum": false,
+        "vacuum_threshold_pct": 15.0,
+        "vacuum_min_pages": 50
+      },
+      "ephemeral": {
+        "FEED_SNAPSHOT": 3,
+        "RUNTIME_SAMPLE": 3,
+        "TIME_ENTRY": 2,
+        "DAILY_STATE": 3,
+        "CRON_SUPERVISOR_REPORT": 3,
+        "BRAIN_MAINTENANCE_REPORT": 3,
+        "BRAIN_HISTORY": 2,
+        "SOVEREIGNTY_PHASE_RUN": 3,
+        "_total_ephemeral_labels": 22,
+        "_json_log_nodes": 22,
+        "_keep_last": 3,
+        "_max_age_days": 7
+      },
+      "contradicts_total": 146,
+      "status": "healthy"
+    },
+    "markdown_log": "2026-08-28_162204_maintenance_report.md"
+  },
+  {
+    "timestamp": "2026-08-31 14:55:50",
+    "target_db": "D:\\opencode\\memory\\v2\\memory_testing\\core.db",
+    "duration_seconds": 1.37,
+    "snapshot_taken": null,
+    "job_types": [
+      "discover"
+    ],
+    "results": {
+      "discover_links": {
+        "status": "success",
+        "links_created": 0,
+        "links_created_core": 0,
+        "links_created_agent": 0,
+        "orphans_purged": {
+          "status": "success",
+          "edges_removed": 0,
+          "node_vectors_removed": 0,
+          "memory_layers_removed": 0,
+          "access_log_removed": 0,
+          "node_index_removed": 0,
+          "total_removed": 0
+        }
+      }
+    },
+    "health_after": {
+      "db_path": "D:\\opencode\\memory\\v2\\memory_testing\\core.db",
+      "db_size_bytes": 2985984,
+      "db_size_mb": 2.85,
+      "total_nodes": 327,
+      "total_edges": 1976,
+      "node_types": {
+        "AFFECT": 1,
+        "AGENT_NOTE": 231,
+        "BOUNDARY": 4,
+        "CORE_REF": 1,
+        "EVENT": 29,
+        "FACT": 39,
+        "PERSON": 1,
+        "PREFERENCE": 1,
+        "TOPIC": 20
+      },
+      "layers": {
+        "long_term": 222,
+        "working": 105
+      },
+      "core_nodes": 96,
+      "agent_note_nodes": 231,
+      "core_type_breakdown": {
+        "PERSON": 1,
+        "AFFECT": 1,
+        "FACT": 39,
+        "PREFERENCE": 1,
+        "BOUNDARY": 4,
+        "TOPIC": 20,
+        "EVENT": 29,
+        "CORE_REF": 1
+      },
+      "agent_note_type_breakdown": {
+        "AGENT_NOTE": 231
+      },
+      "snapshot_count": 2,
+      "bloat": {
+        "page_count": 729,
+        "page_size": 4096,
+        "freelist_count": 10,
+        "freelist_pct": 1.4,
+        "needs_vacuum": false,
+        "vacuum_threshold_pct": 15.0,
+        "vacuum_min_pages": 50
+      },
+      "ephemeral": {
+        "FEED_SNAPSHOT": 3,
+        "RUNTIME_SAMPLE": 1,
+        "TIME_ENTRY": 2,
+        "DAILY_STATE": 3,
+        "BRAIN_MAINTENANCE_REPORT": 3,
+        "BRAIN_HISTORY": 2,
+        "SOVEREIGNTY_PHASE_RUN": 3,
+        "_total_ephemeral_labels": 17,
+        "_json_log_nodes": 17,
+        "_keep_last": 3,
+        "_max_age_days": 7
+      },
+      "contradicts_total": 145,
+      "status": "healthy"
+    },
+    "markdown_log": "2026-08-31_145550_maintenance_report.md"
+  }
+]
