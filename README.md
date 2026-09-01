@@ -661,3 +661,5 @@ Implemented in v2 (see `docs/V2_ARCHITECTURE.md:3` for the full status note):
 
 Built for agents that need to remember — locally, reliably, and with provenance.
 
+![ASHA Memory Graph](https://github.com/fishkiosk-source/asha-memory/blob/main/documentation/logo/asha_graph.PNG)
+
