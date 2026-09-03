@@ -185,6 +185,7 @@ Search core memory. Supports multiple retrieval modes.
 | `bound` | integer | no | Max results (default 10) |
 | `limit` | integer | no | Alias for `bound` |
 | `include_agent_notes` | boolean | no | Include raw agent notes in recall (default false) |
+| `node_type` | string | no | Optional post-filter: `PERSON`\|`FACT`\|`PREFERENCE`\|`EVENT`\|`TOPIC`\|`AFFECT`\|`BOUNDARY`\|`SKILL`\|`AGENT_NOTE`\|`CORE_REF` |
 
 Returns `{"mode": ..., "total_found": N, "clock": {...}, "nodes": [...]}`.
 `clock` is today's date/time snapshot from the internal clock. Each node

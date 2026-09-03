@@ -44,17 +44,42 @@ DEFAULT_CONFIG = {
     "vacuum_freelist_min_pages": 50,
     # Contradiction auto-resolve (opt-in): trust gap keep high-trust
     "contradiction_auto_resolve": False,
+    # P2-4 dashboard auth (optional)
+    "dashboard_token": None,
+    # P2-2 alias: core prune_threshold (keep in sync with prune_importance_floor)
+    "prune_threshold": 0.05,
     "contradiction_low_trust": 0.3,
     "contradiction_high_trust": 0.8,
+    # P3-3 rotation
+    "keep_last_snapshots": 10,
+    "keep_last_logs": 30,
+    # P1-1: SQLite cache size (KB negative) — configurable per Asha feedback
+    "sqlite_cache_size": -64000,
+    # Agent working memory regulator (agent-only, core untouched)
+    "agent_working_regulator_enabled": True,
+    "agent_working_high_water": 12,
+    "agent_working_demote_batch": 5,
+    "agent_working_max_age_hours": 48,
+    "agent_working_weight_access": 1.5,
+    "agent_working_weight_importance": 4.0,
+    "agent_working_weight_age": 0.15,
 }
 
 try:
-    from asha_memory_v2 import AshaMemory, TfidfVectorizer, _tokenize, _now, _edge_uuid, MEMORY_LAYERS
+    from asha_memory_v2 import AshaMemory, TfidfVectorizer, _now, _edge_uuid, MEMORY_LAYERS
+    from shared_lexicon import _tokenize, POSITIVE_WORDS, NEGATIVE_WORDS, _looks_like_json_log, STOPWORDS
 except ImportError:
-    # Fallback if executing directly outside parent dir
+    # Fallback: ensure shared_lexicon is importable even when executed directly
+    try:
+        from shared_lexicon import _tokenize, POSITIVE_WORDS, NEGATIVE_WORDS, _looks_like_json_log, STOPWORDS  # type: ignore
+    except ImportError:
+        _tokenize = lambda text: [w.lower() for w in re.findall(r"\b[\w']{2,}\b", text.lower()) if len(w) >= 2]  # unified fallback
+        POSITIVE_WORDS = set()
+        NEGATIVE_WORDS = set()
+        STOPWORDS = set()
+        _looks_like_json_log = lambda content: False  # type: ignore
     AshaMemory = None
     TfidfVectorizer = None
-    _tokenize = lambda text: [w.lower() for w in text.split() if len(w) >= 2]
     _now = lambda: int(time.time())
     _edge_uuid = lambda: f"edge_{int(time.time()*1000)}"
     MEMORY_LAYERS = {
@@ -64,19 +89,7 @@ except ImportError:
         "archive": {"decay": 1.0, "boost": 0.0, "capacity": None},
     }
 
-# Sentiment lists for contradiction detection
-POSITIVE_WORDS = {
-    "like", "likes", "liked", "love", "loves", "loved", "prefer", "prefers", "preferred",
-    "enjoy", "enjoys", "enjoyed", "good", "great", "excellent", "amazing", "best",
-    "easy", "fast", "beautiful", "perfect", "recommend", "recommends", "awesome", "fantastic", "wonderful",
-    "agree", "agrees", "agreed", "support", "supports", "approve", "approves", "yes", "true", "right", "correct", "reliable", "works"
-}
-NEGATIVE_WORDS = {
-    "hate", "hates", "hated", "dislike", "dislikes", "disliked", "avoid", "avoids", "avoided",
-    "bad", "terrible", "awful", "worst", "horrible", "hard", "slow", "ugly", "broken", "useless",
-    "disaster", "pathetic", "garbage", "disagree", "disagrees", "oppose", "opposes", "reject", "rejects",
-    "no", "false", "wrong", "incorrect", "unreliable", "fails", "failed"
-}
+# Sentiment lists now imported from shared_lexicon (single source) — see try/except above
 
 
 class BrainEngine:
@@ -100,6 +113,11 @@ class BrainEngine:
         self.db_path = self.resolve_db_path(db_path)
         self._ensure_schema()
         self.config["last_db_path"] = str(self.db_path)
+        # P0-3: unified ephemeral allowlist — refresh from core config after DB resolution
+        try:
+            self._refresh_ephemeral_from_core()
+        except Exception:
+            pass
         self._save_config()
 
     def _ensure_schema(self):
@@ -112,7 +130,7 @@ class BrainEngine:
                     print(f"[BrainEngine] Schema initialization error: {e}")
         else:
             try:
-                conn = sqlite3.connect(str(self.db_path))
+                conn = self._connect_db()
                 cursor = conn.cursor()
                 cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='nodes'")
                 table_exists = cursor.fetchone()
@@ -121,6 +139,28 @@ class BrainEngine:
                     AshaMemory(base_path=str(self.db_path.parent))
             except Exception as e:
                 print(f"[BrainEngine] Schema check error: {e}")
+
+    def _connect_db(self) -> sqlite3.Connection:
+        """Open DB with WAL + foreign_keys + cache_size (single place)."""
+        conn = sqlite3.connect(str(self.db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            pass
+        try:
+            conn.execute("PRAGMA foreign_keys=ON")
+        except Exception:
+            pass
+        try:
+            cs = int(self.config.get("sqlite_cache_size", -64000))
+            conn.execute(f"PRAGMA cache_size={cs}")
+        except Exception:
+            try:
+                conn.execute("PRAGMA cache_size=-64000")
+            except Exception:
+                pass
+        return conn
 
     # ──────────────────────────────────────────────────────────────────────────
     # CORE vs AGENT-NOTE CLASSIFICATION
@@ -169,15 +209,8 @@ class BrainEngine:
         return label in labels
 
     def _looks_like_json_log(self, content: str) -> bool:
-        """Heuristic: raw JSON telemetry (FEED/RUNTIME) — starts with { and has timestamp/status."""
-        if not content:
-            return False
-        s = content.strip()
-        if not s.startswith("{"):
-            return False
-        # JSON logs all share timestamp + (post_count|load) + status/ok
-        low = s[:300].lower()
-        return ("timestamp" in low) or ('"post_count"' in low) or ('"load1m"' in low)
+        """Delegate to shared_lexicon (single heuristic)."""
+        return _looks_like_json_log(content)  # imported from shared_lexicon
 
     def _is_ephemeral_row(self, row) -> bool:
         """Ephemeral = telemetry log that should be capped/rolled, not kept forever."""
@@ -192,8 +225,7 @@ class BrainEngine:
         """Per-label counts for ephemeral nodes + total JSON-log nodes."""
         should_close = False
         if conn is None:
-            conn = sqlite3.connect(str(self.db_path))
-            conn.row_factory = sqlite3.Row
+            conn = self._connect_db()
             should_close = True
         try:
             stats = {}
@@ -222,8 +254,7 @@ class BrainEngine:
         Heuristics: high frequency, JSON shape, low importance, few edges, UPPER_SNAKE label.
         Returns candidates for dashboard Ephemeral tab — never auto-deletes.
         """
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
+        conn = self._connect_db()
         try:
             allow = set(self.config.get("ephemeral_labels", []))
             # all labels with count
@@ -301,6 +332,18 @@ class BrainEngine:
         lst.append(label)
         self.config["ephemeral_labels"] = lst
         self._save_config()
+        # also sync to core config.json for unified allowlist P0-3
+        try:
+            core_cfg = self.db_path.parent / "config.json"
+            if core_cfg.exists():
+                core_data = json.loads(core_cfg.read_text(encoding="utf-8"))
+                core_list = core_data.get("ephemeral_labels", [])
+                if label not in core_list:
+                    core_list.append(label)
+                    core_data["ephemeral_labels"] = sorted(set(core_list))
+                    core_cfg.write_text(json.dumps(core_data, indent=2), encoding="utf-8")
+        except Exception:
+            pass
         return {"status": "success", "ephemeral_labels": lst}
 
     def remove_ephemeral_label(self, label: str) -> Dict[str, Any]:
@@ -310,12 +353,22 @@ class BrainEngine:
         lst = [x for x in lst if x != label]
         self.config["ephemeral_labels"] = lst
         self._save_config()
+        try:
+            core_cfg = self.db_path.parent / "config.json"
+            if core_cfg.exists():
+                core_data = json.loads(core_cfg.read_text(encoding="utf-8"))
+                core_list = core_data.get("ephemeral_labels", [])
+                if label in core_list:
+                    core_list = [x for x in core_list if x != label]
+                    core_data["ephemeral_labels"] = core_list
+                    core_cfg.write_text(json.dumps(core_data, indent=2), encoding="utf-8")
+        except Exception:
+            pass
         return {"status": "success", "ephemeral_labels": lst}
 
     def get_full_statistics(self) -> Dict[str, Any]:
         """Aggregated stats for dedicated Statistics tab — one place overview."""
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
+        conn = self._connect_db()
         try:
             total_nodes = conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
             total_edges = conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
@@ -521,13 +574,59 @@ class BrainEngine:
         return found
 
     def set_target_db(self, db_path: str) -> bool:
-        """Switch the current target database."""
-        target = Path(db_path).resolve()
-        if target.exists() and target.is_file():
-            self.db_path = target
-            self.config["last_db_path"] = str(target)
-            self._save_config()
-            return True
+        """Switch the current target database. Handles file or directory containing core.db, relative or absolute."""
+        if not db_path or not str(db_path).strip():
+            return False
+        raw = str(db_path).strip().strip('"').strip("'")
+        # Try as given, then resolve
+        candidates = []
+        try:
+            p = Path(raw)
+            # If relative, try relative to brain parent and cwd
+            if not p.is_absolute():
+                candidates.append((Path.cwd() / raw).resolve())
+                candidates.append((self.brain_dir.parent / raw).resolve())
+                candidates.append((self.brain_dir / raw).resolve())
+            candidates.append(p.resolve())
+            # Also try with core.db appended if it's a directory
+            expanded = []
+            for cand in candidates:
+                expanded.append(cand)
+                if cand.is_dir():
+                    expanded.append((cand / "core.db").resolve())
+                # If cand is file without .db extension but exists as dir+core.db
+                if not cand.exists() and cand.suffix == "":
+                    expanded.append((cand / "core.db").resolve())
+            for target in expanded:
+                if target.exists() and target.is_file():
+                    # Validate it's an Asha DB (has nodes table) or at least exists
+                    try:
+                        # quick check for nodes table
+                        conn = sqlite3.connect(str(target))
+                        cur = conn.cursor()
+                        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='nodes'")
+                        has_nodes = cur.fetchone() is not None
+                        conn.close()
+                        if not has_nodes:
+                            # allow but warn - still switch, will init schema
+                            pass
+                    except Exception:
+                        pass
+                    self.db_path = target
+                    self.config["last_db_path"] = str(target)
+                    self._save_config()
+                    try:
+                        self._refresh_ephemeral_from_core()
+                    except Exception:
+                        pass
+                    # ensure schema exists
+                    try:
+                        self._ensure_schema()
+                    except Exception:
+                        pass
+                    return True
+        except Exception as e:
+            print(f"[BrainEngine] set_target_db error for '{db_path}': {e}")
         return False
 
     def create_snapshot(self, db_path: Optional[str] = None) -> Dict[str, Any]:
@@ -557,6 +656,17 @@ class BrainEngine:
                 "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "size_bytes": dest_path.stat().st_size,
             }
+            # P3-3 rotation: prune old snapshots
+            try:
+                keep = int(self.config.get("keep_last_snapshots", 10))
+                snaps = sorted(self.snapshots_dir.glob("*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
+                for old in snaps[keep:]:
+                    try:
+                        old.unlink()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             return snapshot_info
         except Exception as e:
             return {"status": "error", "message": f"Snapshot failed: {str(e)}"}
@@ -683,8 +793,7 @@ class BrainEngine:
         semantic_merged_agent = 0
         edges_relinked = 0
 
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
+        conn = self._connect_db()
 
         try:
             # 1. Exact Checksum / Label & Content Deduplication (per scope)
@@ -822,8 +931,7 @@ class BrainEngine:
         skipped_review_ready = 0
         skipped_protected = 0
 
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
+        conn = self._connect_db()
 
         try:
             # 1. Promote hot short_term nodes to long_term
@@ -917,6 +1025,181 @@ class BrainEngine:
             conn.close()
             return {"status": "error", "message": f"Tier management failed: {str(e)}"}
 
+    # ── Agent WORKING regulator (agent-only, core untouched) ──────────────────
+    def get_agent_working_preview(self) -> Dict[str, Any]:
+        """Observer preview: all agent WORKING nodes with score / days-left.
+
+        Score = acc*Wa + imp*Wi - age_h*Wd   (config tunable)
+        Days left = (max_age_h - age_h)/24 . Core notes never included.
+        """
+        conn = self._connect_db()
+        try:
+            wa = float(self.config.get("agent_working_weight_access", 1.5))
+            wi = float(self.config.get("agent_working_weight_importance", 4.0))
+            wd = float(self.config.get("agent_working_weight_age", 0.15))
+            max_age_h = float(self.config.get("agent_working_max_age_hours", 48))
+            high_water = int(self.config.get("agent_working_high_water", 12))
+            enabled = bool(self.config.get("agent_working_regulator_enabled", True))
+            now = _now()
+            # fetch all working agent notes with layer info
+            rows = conn.execute("""
+                SELECT n.node_id, n.node_type, n.label, n.content, n.importance, n.access_count,
+                       n.trust_level, n.created_at, n.updated_at, n.metadata,
+                       ml.promoted_at, ml.layer
+                FROM nodes n JOIN memory_layers ml ON n.node_id = ml.node_id
+                WHERE ml.layer = 'working'
+            """).fetchall()
+            agent_rows = [r for r in rows if self.is_agent_note(r)]
+            # attach last_access from access_log
+            preview = []
+            for r in agent_rows:
+                meta = self._node_metadata(r)
+                promoted_at = r["promoted_at"] or r["created_at"] or now
+                # last_access = max access_log else promoted_at
+                la_row = conn.execute("SELECT MAX(accessed_at) as la FROM access_log WHERE node_id=?", (r["node_id"],)).fetchone()
+                last_access = la_row["la"] if la_row and la_row["la"] else promoted_at
+                base_ts = max(promoted_at, last_access)
+                age_h = max(0.0, (now - base_ts) / 3600.0)
+                imp = r["importance"] if r["importance"] is not None else 0.5
+                acc = r["access_count"] or 0
+                score = round(acc * wa + imp * wi - age_h * wd, 3)
+                days_left = round(max(0.0, (max_age_h - age_h) / 24.0), 2)
+                hours_left = round(max(0.0, max_age_h - age_h), 1)
+                # rank will be set after sort
+                preview.append({
+                    "node_id": r["node_id"],
+                    "label": r["label"],
+                    "content": (r["content"] or "")[:160],
+                    "importance": imp,
+                    "trust_level": r["trust_level"],
+                    "access_count": acc,
+                    "agent_id": meta.get("agent_id"),
+                    "attention_state": meta.get("attention_state", "agent_private"),
+                    "promoted_at": promoted_at,
+                    "last_access": last_access,
+                    "age_hours": round(age_h, 1),
+                    "score": score,
+                    "days_left": days_left,
+                    "hours_left": hours_left,
+                    "is_review_ready": meta.get("attention_state") == "review_ready",
+                })
+            # sort low score first — most likely to be demoted
+            preview.sort(key=lambda x: x["score"])
+            # mark next batch
+            demote_batch = int(self.config.get("agent_working_demote_batch", 5))
+            for i, p in enumerate(preview):
+                if p["is_review_ready"]:
+                    p["action"] = "protected (review_ready)"
+                elif i < demote_batch and (len(preview) >= high_water or p["age_hours"] >= max_age_h):
+                    p["action"] = "demote_next"
+                elif p["age_hours"] >= max_age_h * 0.8:
+                    p["action"] = "stale_soon"
+                else:
+                    p["action"] = "keep"
+            enabled = enabled and True
+            return {
+                "enabled": enabled,
+                "high_water": high_water,
+                "max_age_hours": max_age_h,
+                "weights": {"wa": wa, "wi": wi, "wd": wd},
+                "demote_batch": demote_batch,
+                "agent_working_count": len(preview),
+                "preview": preview[:100],
+            }
+        except Exception as e:
+            return {"error": str(e), "preview": []}
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def regulate_agent_working_memory(self, dry_run: bool = False, auto_snapshot: bool = True) -> Dict[str, Any]:
+        """Deterministic janitor: demotes low-score agent WORKING notes to short_term.
+
+        Core working is never touched (is_agent_note guard). Runs in maintenance
+        window or when high-water hit. Preserves node_ids/edges.
+        """
+        if not self.config.get("agent_working_regulator_enabled", True):
+            return {"status": "skipped", "message": "regulator disabled", "demoted": 0}
+        if auto_snapshot and not dry_run:
+            self.create_snapshot()
+        conn = self._connect_db()
+        try:
+            wa = float(self.config.get("agent_working_weight_access", 1.5))
+            wi = float(self.config.get("agent_working_weight_importance", 4.0))
+            wd = float(self.config.get("agent_working_weight_age", 0.15))
+            max_age_h = float(self.config.get("agent_working_max_age_hours", 48))
+            high_water = int(self.config.get("agent_working_high_water", 12))
+            batch = int(self.config.get("agent_working_demote_batch", 5))
+            now = _now()
+            rows = conn.execute("""
+                SELECT n.node_id, n.node_type, n.importance, n.access_count, n.created_at, n.metadata,
+                       ml.promoted_at, ml.layer
+                FROM nodes n JOIN memory_layers ml ON n.node_id = ml.node_id
+                WHERE ml.layer = 'working'
+            """).fetchall()
+            agent_rows = [r for r in rows if self.is_agent_note(r)]
+            # never touch review_ready
+            candidates = []
+            for r in agent_rows:
+                meta = self._node_metadata(r)
+                if meta.get("attention_state") == "review_ready":
+                    continue
+                promoted_at = r["promoted_at"] or r["created_at"] or now
+                la_row = conn.execute("SELECT MAX(accessed_at) as la FROM access_log WHERE node_id=?", (r["node_id"],)).fetchone()
+                last_access = la_row["la"] if la_row and la_row["la"] else promoted_at
+                base_ts = max(promoted_at, last_access)
+                age_h = max(0.0, (now - base_ts) / 3600.0)
+                imp = r["importance"] if r["importance"] is not None else 0.5
+                acc = r["access_count"] or 0
+                score = acc * wa + imp * wi - age_h * wd
+                candidates.append((score, age_h, r))
+            candidates.sort(key=lambda x: x[0])  # low score first
+            total_agent_working = len(agent_rows)
+            # trigger only if high_water hit or any stale > max_age
+            has_stale = any(age >= max_age_h for _, age, _ in candidates)
+            if total_agent_working < high_water and not has_stale:
+                conn.close()
+                return {"status": "success", "demoted": 0, "message": f"below high_water ({total_agent_working}/{high_water}) and no stale > {max_age_h}h", "total_agent_working": total_agent_working}
+            # pick batch: stale first then low score
+            stale = [c for c in candidates if c[1] >= max_age_h]
+            to_demote = []
+            # stale always demoted first
+            for c in stale:
+                if len(to_demote) < batch:
+                    to_demote.append(c)
+            # then fill with lowest scores if still under batch and still over high_water
+            if total_agent_working >= high_water:
+                for c in candidates:
+                    if c in to_demote:
+                        continue
+                    if len(to_demote) >= batch:
+                        break
+                    to_demote.append(c)
+            demoted_ids = []
+            for score, age_h, r in to_demote:
+                if dry_run:
+                    demoted_ids.append(r["node_id"])
+                else:
+                    conn.execute("UPDATE memory_layers SET layer='short_term', layer_order=2, promoted_at=? WHERE node_id=?", (now, r["node_id"]))
+                    demoted_ids.append(r["node_id"])
+            if not dry_run:
+                conn.commit()
+            conn.close()
+            out = {"status": "success", "demoted": len(demoted_ids), "demoted_ids": demoted_ids,
+                   "total_agent_working": total_agent_working, "high_water": high_water, "max_age_hours": max_age_h, "dry_run": dry_run}
+            if dry_run:
+                # include preview of would-demote with scores
+                out["would_demote"] = [{"node_id": r["node_id"], "score": round(s,3), "age_hours": round(a,1)} for s,a,r in to_demote]
+            return out
+        except Exception as e:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return {"status": "error", "message": str(e)}
+
     def prune_stale_unused_nodes(self, max_unused_days: int = 4, auto_snapshot: bool = True) -> Dict[str, Any]:
         """
         Tracks and cleanly removes unused nodes older than max_unused_days (default 4+ days old).
@@ -945,8 +1228,7 @@ class BrainEngine:
         skipped_important = 0
         skipped_connected = 0
 
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
+        conn = self._connect_db()
 
         try:
             cursor = conn.execute("""
@@ -1029,7 +1311,7 @@ class BrainEngine:
         nodes. This must run at the END of every job (not just the start) so it
         catches orphans created by that job itself.
         """
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect_db()
         try:
             edges_removed = conn.execute("""
                 DELETE FROM edges
@@ -1066,14 +1348,24 @@ class BrainEngine:
         Content merges (dedup) and prunes leave stored node_vectors stale, and
         the auto_rebuild flag only fires on memory-side writes — the brain
         mutates the DB directly, so maintenance must trigger the rebuild itself.
+
+        P2-6: Uses static helper AshaMemory.rebuild_vector_index_for_path when
+        available to avoid AshaMemory(base_path=parent) side-effect (creates
+        config.json). Falls back to instance method for older installs.
         """
         try:
+            t0 = time.time()
+            # Prefer static helper (no config creation)
+            if AshaMemory is not None and hasattr(AshaMemory, "rebuild_vector_index_for_path"):
+                res = AshaMemory.rebuild_vector_index_for_path(str(self.db_path))
+                if res.get("status") == "success":
+                    return res
+                # fall through to instance method if static failed
             if AshaMemory is None:
                 return {"status": "error", "message": "asha_memory_v2 not importable"}
-            t0 = time.time()
             mem = AshaMemory(base_path=str(self.db_path.parent))
             mem.rebuild_vector_index()
-            conn = sqlite3.connect(str(self.db_path))
+            conn = self._connect_db()
             count = conn.execute("SELECT COUNT(*) FROM node_vectors").fetchone()[0]
             conn.close()
             return {
@@ -1090,6 +1382,7 @@ class BrainEngine:
             before = self.db_path.stat().st_size if self.db_path.exists() else 0
             # VACUUM cannot run inside a transaction with other connections; use isolated connection
             conn = sqlite3.connect(str(self.db_path))
+            conn.execute("PRAGMA foreign_keys=ON")
             # Ensure WAL checkpoint before vacuum
             try:
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -1133,8 +1426,7 @@ class BrainEngine:
         skipped_by_age = 0
         edges_removed = 0
 
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
+        conn = self._connect_db()
         try:
             ephemeral_labels = self.config.get("ephemeral_labels", [])
             for label in ephemeral_labels:
@@ -1210,8 +1502,7 @@ class BrainEngine:
     def get_bloat_metrics(self) -> Dict[str, Any]:
         """Freelist / ephemeral / contradiction bloat signals for dashboard."""
         try:
-            conn = sqlite3.connect(str(self.db_path))
-            conn.row_factory = sqlite3.Row
+            conn = self._connect_db()
             page_count = conn.execute("PRAGMA page_count").fetchone()[0]
             page_size = conn.execute("PRAGMA page_size").fetchone()[0]
             freelist = conn.execute("PRAGMA freelist_count").fetchone()[0]
@@ -1399,6 +1690,17 @@ class BrainEngine:
 
         md_content = "\n".join(md_lines)
         log_file.write_text(md_content, encoding="utf-8")
+        # P3-3 rotation: prune old logs
+        try:
+            keep = int(self.config.get("keep_last_logs", 30))
+            logs = sorted(self.logs_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+            for old in logs[keep:]:
+                try:
+                    old.unlink()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
         return {
             "status": "success",
@@ -1432,8 +1734,7 @@ class BrainEngine:
         Edges carry metadata {status: pending|ignored, confidence, overlap_words, ...}
         so dashboard can curate instead of blind delete.
         """
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
+        conn = self._connect_db()
 
         contradictions_found = 0
         edges_created = 0
@@ -1455,53 +1756,57 @@ class BrainEngine:
                     words_b = set(_tokenize(b["label"] + " " + b["content"]))
 
                     overlap = words_a & words_b
-                    if len(overlap) >= 2:
-                        pos_a = len(words_a & POSITIVE_WORDS)
-                        neg_a = len(words_a & NEGATIVE_WORDS)
-                        pos_b = len(words_b & POSITIVE_WORDS)
-                        neg_b = len(words_b & NEGATIVE_WORDS)
+                    # Filter 1-3 letter noise (it, is, and, etc.) + stopwords — fixes false positives
+                    meaningful_overlap = {w for w in overlap if len(w) > 3 and w not in STOPWORDS}
+                    if len(meaningful_overlap) < 2:
+                        continue
+                    overlap = meaningful_overlap
+                    pos_a = len(words_a & POSITIVE_WORDS)
+                    neg_a = len(words_a & NEGATIVE_WORDS)
+                    pos_b = len(words_b & POSITIVE_WORDS)
+                    neg_b = len(words_b & NEGATIVE_WORDS)
 
-                        if (pos_a > neg_a and neg_b > pos_b) or (neg_a > pos_a and pos_b > neg_b):
-                            # confidence scoring — overlap + sentiment gap + importance
-                            imp_a = a["importance"] if a["importance"] is not None else 0.5
-                            imp_b = b["importance"] if b["importance"] is not None else 0.5
-                            imp_avg = (imp_a + imp_b) / 2
-                            sentiment_gap = abs((pos_a - neg_a) - (pos_b - neg_b))
-                            overlap_score = min(0.6, len(overlap) * 0.15)
-                            sentiment_score = min(0.35, sentiment_gap * 0.12)
-                            imp_bonus = imp_avg * 0.1
-                            confidence = round(min(0.98, 0.25 + overlap_score + sentiment_score + imp_bonus), 2)
-                            # auto-triage: low confidence + low importance → ignored (not pending)
-                            is_high_value = imp_avg >= 0.6 or a["node_type"] in ("PERSON", "PREFERENCE") or b["node_type"] in ("PERSON", "PREFERENCE")
-                            status = "pending" if (confidence >= 0.55 or is_high_value) else "ignored"
-                            overlap_words = sorted(list(overlap))[:6]
-                            meta = {
-                                "detected_by": "BrainEngine",
-                                "method": "sentiment_clash",
-                                "overlap_words": overlap_words,
-                                "overlap_count": len(overlap),
-                                "pos_a": pos_a, "neg_a": neg_a, "pos_b": pos_b, "neg_b": neg_b,
-                                "confidence": confidence,
-                                "status": status,
-                                "importance_avg": round(imp_avg, 3),
-                            }
-                            # skip if CONTRADICTS already exists in either direction
-                            exists = conn.execute("SELECT edge_id, metadata FROM edges WHERE (from_node = ? AND to_node = ? AND edge_type='CONTRADICTS') OR (from_node = ? AND to_node = ? AND edge_type='CONTRADICTS')", (a["node_id"], b["node_id"], b["node_id"], a["node_id"])).fetchone()
-                            if exists:
-                                continue
-                            try:
-                                conn.execute("""
-                                    INSERT OR IGNORE INTO edges
-                                    (edge_id, from_node, to_node, edge_type, weight, created_at, metadata)
-                                    VALUES (?, ?, ?, 'CONTRADICTS', -0.8, ?, ?)
-                                """, (_edge_uuid(), a["node_id"], b["node_id"], _now(), json.dumps(meta)))
-                                contradictions_found += 1
-                                if status == "pending":
-                                    edges_created += 1
-                                else:
-                                    edges_ignored += 1
-                            except sqlite3.IntegrityError:
-                                pass
+                    if (pos_a > neg_a and neg_b > pos_b) or (neg_a > pos_a and pos_b > neg_b):
+                        # confidence scoring — overlap + sentiment gap + importance
+                        imp_a = a["importance"] if a["importance"] is not None else 0.5
+                        imp_b = b["importance"] if b["importance"] is not None else 0.5
+                        imp_avg = (imp_a + imp_b) / 2
+                        sentiment_gap = abs((pos_a - neg_a) - (pos_b - neg_b))
+                        overlap_score = min(0.6, len(overlap) * 0.15)
+                        sentiment_score = min(0.35, sentiment_gap * 0.12)
+                        imp_bonus = imp_avg * 0.1
+                        confidence = round(min(0.98, 0.25 + overlap_score + sentiment_score + imp_bonus), 2)
+                        # auto-triage: low confidence + low importance → ignored (not pending)
+                        is_high_value = imp_avg >= 0.6 or a["node_type"] in ("PERSON", "PREFERENCE") or b["node_type"] in ("PERSON", "PREFERENCE")
+                        status = "pending" if (confidence >= 0.55 or is_high_value) else "ignored"
+                        overlap_words = sorted(list(overlap))[:6]
+                        meta = {
+                            "detected_by": "BrainEngine",
+                            "method": "sentiment_clash",
+                            "overlap_words": overlap_words,
+                            "overlap_count": len(overlap),
+                            "pos_a": pos_a, "neg_a": neg_a, "pos_b": pos_b, "neg_b": neg_b,
+                            "confidence": confidence,
+                            "status": status,
+                            "importance_avg": round(imp_avg, 3),
+                        }
+                        # skip if CONTRADICTS already exists in either direction
+                        exists = conn.execute("SELECT edge_id, metadata FROM edges WHERE (from_node = ? AND to_node = ? AND edge_type='CONTRADICTS') OR (from_node = ? AND to_node = ? AND edge_type='CONTRADICTS')", (a["node_id"], b["node_id"], b["node_id"], a["node_id"])).fetchone()
+                        if exists:
+                            continue
+                        try:
+                            conn.execute("""
+                                INSERT OR IGNORE INTO edges
+                                (edge_id, from_node, to_node, edge_type, weight, created_at, metadata)
+                                VALUES (?, ?, ?, 'CONTRADICTS', -0.8, ?, ?)
+                            """, (_edge_uuid(), a["node_id"], b["node_id"], _now(), json.dumps(meta)))
+                            contradictions_found += 1
+                            if status == "pending":
+                                edges_created += 1
+                            else:
+                                edges_ignored += 1
+                        except sqlite3.IntegrityError:
+                            pass
 
             conn.commit()
             conn.close()
@@ -1519,8 +1824,7 @@ class BrainEngine:
     # ── Contradiction curation (dashboard) ─────────────────────────────────
     def get_contradictions(self, status: str = None, limit: int = 50) -> Dict[str, Any]:
         """List CONTRADICTS edges with node snippets for curation UI."""
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
+        conn = self._connect_db()
         try:
             rows = conn.execute("SELECT edge_id, from_node, to_node, weight, created_at, metadata FROM edges WHERE edge_type='CONTRADICTS' ORDER BY created_at DESC").fetchall()
             out = []
@@ -1615,8 +1919,7 @@ class BrainEngine:
 
     def resolve_contradiction(self, edge_id: str, action: str) -> Dict[str, Any]:
         """Resolve by deleting edge (and optionally merging/keeping nodes). Actions: delete, keep_from, keep_to, merge."""
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
+        conn = self._connect_db()
         try:
             row = conn.execute("SELECT from_node, to_node, metadata FROM edges WHERE edge_id = ? AND edge_type='CONTRADICTS'", (edge_id,)).fetchone()
             if not row:
@@ -1694,15 +1997,20 @@ class BrainEngine:
             self.rebuild_vectors()
         return {"status": "success", "dry_run": False, "resolved": resolved, "details": details, "candidates_total": len(candidates)}
 
-    def graduate_agent_notes(self) -> Dict[str, Any]:
+    def graduate_agent_notes(self, node_ids: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Evaluates worker AGENT_NOTE nodes set to 'review_ready'.
         Promotes validated notes with sufficient trust/access into permanent CORE memory nodes.
+        If node_ids is provided, only those specific nodes are graduated (explicit per-node action).
         """
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
+        conn = self._connect_db()
 
         graduated = 0
+        graduated_ids: List[str] = []
+        skipped: List[Dict[str, str]] = []
+
+        explicit = node_ids is not None and len(node_ids) > 0
+        wanted = set(node_ids) if explicit else None
 
         try:
             cursor = conn.execute("""
@@ -1711,30 +2019,63 @@ class BrainEngine:
             """)
             notes = [n for n in cursor.fetchall() if self.is_agent_note(n)]
 
+            # If explicit list, filter to only those nodes (preserve order of input)
+            if explicit:
+                wanted_map = {n["node_id"]: n for n in notes}
+                filtered = []
+                for nid in node_ids:
+                    row = wanted_map.get(nid)
+                    if row is None:
+                        skipped.append({"node_id": nid, "reason": "not found or not an agent note"})
+                    else:
+                        filtered.append(row)
+                notes = filtered
+
             for note in notes:
                 meta = json.loads(note["metadata"]) if note["metadata"] else {}
                 attention = meta.get("attention_state", "agent_private")
 
-                if attention == "review_ready" or (note["trust_level"] >= 0.7 and note["importance"] >= 0.6):
-                    # Graduate to CORE node
-                    meta["attention_state"] = "core_verified"
-                    meta["graduated_at"] = _now()
-                    meta["graduated_by"] = "BrainEngine"
+                # Explicit single-node graduation bypasses trust/importance gate — user explicitly chose it
+                if explicit:
+                    # Already verified -> skip
+                    if attention == "core_verified":
+                        skipped.append({"node_id": note["node_id"], "reason": "already core_verified"})
+                        continue
+                else:
+                    if not (attention == "review_ready" or (note["trust_level"] >= 0.7 and note["importance"] >= 0.6)):
+                        continue
 
-                    conn.execute("""
-                        UPDATE nodes
-                        SET node_type = 'FACT', source = 'CORE', trust_level = 0.95,
-                            updated_at = ?, metadata = ?
-                        WHERE node_id = ?
-                    """, (_now(), json.dumps(meta), note["node_id"]))
-                    graduated += 1
+                # Graduate to CORE node
+                meta["attention_state"] = "core_verified"
+                meta["graduated_at"] = _now()
+                meta["graduated_by"] = "BrainEngine"
+
+                conn.execute("""
+                    UPDATE nodes
+                    SET node_type = 'FACT', source = 'CORE', trust_level = 0.95,
+                        updated_at = ?, metadata = ?
+                    WHERE node_id = ?
+                """, (_now(), json.dumps(meta), note["node_id"]))
+                graduated += 1
+                graduated_ids.append(note["node_id"])
 
             conn.commit()
             conn.close()
-            return {"status": "success", "graduated": graduated}
+            out: Dict[str, Any] = {"status": "success", "graduated": graduated}
+            if explicit:
+                out["graduated_ids"] = graduated_ids
+                if skipped:
+                    out["skipped"] = skipped
+            return out
         except Exception as e:
             conn.close()
             return {"status": "error", "message": f"Agent note graduation failed: {str(e)}"}
+
+    def graduate_single_note(self, node_id: str) -> Dict[str, Any]:
+        """Convenience: graduate a single agent note by id."""
+        if not node_id or not node_id.strip():
+            return {"status": "error", "message": "node_id required"}
+        return self.graduate_agent_notes(node_ids=[node_id.strip()])
 
     def discover_links(self) -> Dict[str, Any]:
         """
@@ -1742,8 +2083,7 @@ class BrainEngine:
         Links are only created within the same scope (core-to-core, agent-to-agent);
         agent notes are never linked into core memory.
         """
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
+        conn = self._connect_db()
 
         links_created_core = 0
         links_created_agent = 0
@@ -1806,8 +2146,7 @@ class BrainEngine:
 
     def get_health_metrics(self) -> Dict[str, Any]:
         """Returns comprehensive health, node count, tier distribution, and graph statistics."""
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
+        conn = self._connect_db()
 
         try:
             total_nodes = conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"]
@@ -1897,7 +2236,59 @@ class BrainEngine:
                 merged.update(loaded)
             except Exception:
                 pass
+        # Read-through: ephemeral allowlist + prune threshold unified with core config.json when target DB exists (P2-2)
+        try:
+            # db_path may not be resolved yet during __init__ (resolve_db_path called after)
+            db_parent = getattr(self, "db_path", None)
+            if db_parent:
+                core_cfg = Path(db_parent).parent / "config.json"
+                if core_cfg.exists():
+                    core_data = json.loads(core_cfg.read_text(encoding="utf-8"))
+                    if "ephemeral_labels" in core_data and isinstance(core_data["ephemeral_labels"], list):
+                        merged["ephemeral_labels"] = core_data["ephemeral_labels"]
+                    # P2-2 alias: core prune_threshold -> brain prune_importance_floor
+                    if "prune_threshold" in core_data:
+                        try:
+                            merged["prune_importance_floor"] = float(core_data["prune_threshold"])
+                        except Exception:
+                            pass
+                    # also handle core's alias prune_importance_floor (from P2-2 core write-through)
+                    elif "prune_importance_floor" in core_data:
+                        try:
+                            merged["prune_importance_floor"] = float(core_data["prune_importance_floor"])
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+        # Keep alias in sync for backwards compat
+        try:
+            if "prune_importance_floor" in merged:
+                merged["prune_threshold"] = merged["prune_importance_floor"]
+        except Exception:
+            pass
         return merged
+
+    def _refresh_ephemeral_from_core(self):
+        """Re-read ephemeral allowlist + prune alias from core config.json (call after DB switch). P2-2"""
+        try:
+            core_cfg = self.db_path.parent / "config.json"
+            if core_cfg.exists():
+                core_data = json.loads(core_cfg.read_text(encoding="utf-8"))
+                if "ephemeral_labels" in core_data:
+                    self.config["ephemeral_labels"] = core_data["ephemeral_labels"]
+                if "prune_threshold" in core_data:
+                    try:
+                        self.config["prune_importance_floor"] = float(core_data["prune_threshold"])
+                        self.config["prune_threshold"] = float(core_data["prune_threshold"])
+                    except Exception:
+                        pass
+                elif "prune_importance_floor" in core_data:
+                    try:
+                        self.config["prune_importance_floor"] = float(core_data["prune_importance_floor"])
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     def reset_config(self) -> Dict[str, Any]:
         """Reset all settings to defaults, keeping the active DB path."""

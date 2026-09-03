@@ -272,6 +272,10 @@ window.onerror = function(msg, url, line, col, err) {
   console.error(err);
 };
 
+// ── Token helper for 0.0.0.0 dashboard (P2-4) ──
+function getToken(){try{const u=new URLSearchParams(location.search);let t=u.get('token');if(t){try{localStorage.setItem('asha_token',t);}catch(e){} return t;} try{return localStorage.getItem('asha_token')||'';}catch(e){return '';} }catch(e){return ''}}
+function authFetch(url, opts={}){const t=getToken();if(t){opts.headers=Object.assign({},opts.headers||{}, {'X-Api-Token':t}); if(url.startsWith('/api/') && !url.includes('token=')){url += (url.includes('?')?'&':'?')+'token='+encodeURIComponent(t);} } return fetch(url, opts);}
+
 // ── Globals ──
 var SQL = null, db = null, dbName = "", originalBytes = null;
 var allNodes = [], allEdges = [], allVectors = [], allLayers = [], layerByNode = {};
@@ -1822,7 +1826,7 @@ wireSorting();
   try{
     const params=new URLSearchParams(location.search);
     if(params.has('embedded')){
-      fetch('/api/config').then(r=>r.json()).then(j=>{ if(j && j.config && j.config.ephemeral_labels) { window.EPHEMERAL_LABELS = j.config.ephemeral_labels; } }).catch(()=>{});
+      authFetch('/api/config').then(r=>r.json()).then(j=>{ if(j && j.config && j.config.ephemeral_labels) { window.EPHEMERAL_LABELS = j.config.ephemeral_labels; } }).catch(()=>{});
       fetch('/api/db_bytes').then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.arrayBuffer(); }).then(buf=>{ if(buf.byteLength>0) loadFromBytes(buf, 'active.db'); }).catch(()=>{});
       // override Save button to Apply when embedded
       try{
@@ -1845,7 +1849,7 @@ wireSorting();
     }
   }catch(e){}
   // Also fetch config when not embedded but on same origin (dashboard) to keep manager in sync if user edits allowlist
-  try{ fetch('/api/config').then(r=>r.json()).then(j=>{ if(j && j.config && j.config.ephemeral_labels) window.EPHEMERAL_LABELS = j.config.ephemeral_labels; }).catch(()=>{}); }catch(e){}
+  try{ authFetch('/api/config').then(r=>r.json()).then(j=>{ if(j && j.config && j.config.ephemeral_labels) window.EPHEMERAL_LABELS = j.config.ephemeral_labels; }).catch(()=>{}); }catch(e){}
 })();
 </script>
 </body>

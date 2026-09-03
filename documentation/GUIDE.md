@@ -173,12 +173,9 @@ These two fields control memory lifecycle:
 - `0.0–0.2`: Trivial — temporary notes, may be pruned
 
 **How they interact:**
-- **Decay:** Trust decays over time (`decay_factor_per_day` = 0.99, so ~3% per
-  month). Importance does NOT decay. High importance = high survival chance.
-- **Pruning:** The `PRUNE` recall mode finds nodes with low trust × importance.
-  If both are low, the node is a candidate for removal.
-- **Access boost:** Each time a node is recalled, its trust gets a small bump
-  (`access_boost` = 0.05). Frequently accessed nodes stay alive.
+- **Decay:** *Importance* decays over time (tier-dependent: `short_term` 0.97/day, `long_term` 0.995/day, `working`/`archive` 1.0 no decay). *Trust* does NOT decay — it is provenance reliability and only changes via `update_trust` or promotion. High importance = high survival chance against `manage_tiers`/`run_decay`.
+- **Pruning:** The `PRUNE` recall mode finds nodes with `importance < prune_threshold (0.05)` **and** `access_count < 3` **and** `updated_at < now - 30 days`. Brain `prune_stale_unused_nodes` adds `importance < prune_importance_floor` **and** no edges **and** `protected_types` excluded. Low importance + low access + no links → candidate.
+- **Access boost:** Each time a node is recalled (via `_bump_access` / `update_layer_on_access`), its *importance* (tier boost 0.10/0.05) and `access_count` are bumped, promoting `working → short_term (3 accesses) → long_term (15 accesses)`. Frequently accessed nodes stay alive.
 
 **Strategy:** Set `importance` based on long-term value, `trust` based on
 confidence. Things you want to survive indefinitely need high importance.
@@ -217,8 +214,8 @@ When you need to find something, use this decision tree:
 5. Do you want to see everything recent?
    → recall(query="", mode="RECENT", bound=20)
 
-6. Do you want to explore from a known node?
-   → recall(query="node_id", mode="RELATED")
+6. Do you want to find keyword-related content?
+   → recall(query="keywords", mode="RELATED")   # keyword/FTS, not graph-neighbor — use CLUSTER for edge expansion
 
 7. Do you want to see how two things connect?
    → recall(query="label_A -> label_B", mode="PATH")
@@ -249,20 +246,28 @@ When you need to find something, use this decision tree:
 The system has four memory layers that nodes transition through:
 
 ```
-WORKING → SHORT_TERM → LONG_TERM → ARCHIVE
+WORKING (20, agent cap 12) → SHORT_TERM (500) → LONG_TERM (5000) → ARCHIVE (∞)
+ agent janitor Score=acc*Wa+imp*Wi-ageH*Wd, max_age 48h → short_term (agent-only)
 ```
 
-- **Working:** Most recently created/accessed nodes (capacity ~20)
-- **Short-term:** Nodes that survive initial pruning (promoted after ~3 accesses)
-- **Long-term:** Durable knowledge (promoted after ~15 accesses)
-- **Archive:** Old but preserved — not in active vector index
+- **Working:** Most recently created/accessed nodes (capacity 20, decay 1.0 no decay). **Agent `WORKING` is capped at 12/20** and swept by `regulate_agent_working_memory` `brain_engine.py:1117` (`high_water:12`, `batch:5`, `max_age:48h`, `Wa1.5/Wi4.0/Wd0.15`); least useful `agent_private` demoted to `short_term`, `review_ready`/`core_verified` never touched, core `WORKING` never touched (scope-aware `AshaMemory._update_layer_on_access:971`). Preview `Observer` tab shows `days_left/score/demote_next`.
+- **Short-term:** Nodes that survive initial pruning (promoted after 3 accesses, decay 0.97, boost 0.10, cap 500)
+- **Long-term:** Durable knowledge (promoted after 15 accesses, decay 0.995, boost 0.05, cap 5000)
+- **Archive:** Old but preserved — not in active vector index (decay 1.0)
 
 **You don't control layers directly** — they're managed by access count and
 decay. But you influence them through:
-- **High importance** → node resists moving toward archive
-- **Frequent recall** → access boost keeps trust high, node stays in active
-  layers
+- **High importance** → node resists moving toward archive (survives `prune_threshold:0.05` check) and raises `Score` (`Wi:4.0`) so survives janitor
+- **Frequent recall** → access boost bumps importance + `access_count`, node stays in active layers and promotes (`Wa:1.5`)
 - **`PRUNE` mode** → find nodes in the danger zone before they're gone
+- **Caps:** `agent_max_notes:100` enforced — oldest `agent_private` dropped at `agent_remember` when full; `agent_working_high_water:12` enforced by janitor
+
+### Tuning (P1)
+
+- `sqlite_cache_size: -64000` (KB, negative) in `config.json` — increase for >10k nodes; applied in `_core_conn`/`BrainEngine._connect_db`.
+- `consolidation_bucket_prefix:4` / `consolidation_bucket_overlap:2` — tune dedup bucketing (caps buckets >150, only when `len>200`).
+- `ephemeral_labels` (10) — unified allowlist `shared_lexicon.py:86` + `config.json`; Brain dashboard `Ephemeral` tab writes to both.
+- `vector_index_auto_rebuild` — lazy (`True`) defers `fit` until next `SEMANTIC`; `remember_many` does single rebuild.
 
 ### Anti-Patterns
 
@@ -402,6 +407,8 @@ Store a memory node in core memory.
 
 Returns `{"node_id": "node_<hex>"}`. Save this ID — you need it for `relate`.
 
+> **Batch insert:** `remember_many(items)` `asha_memory_v2.py:1198` — single transaction, single vectorizer rebuild, same args as `remember` per item. Use for bulk/telemetry ingestion.
+
 **Choosing node_type:**
 - `PERSON` — information about a specific person
 - `FACT` — factual knowledge
@@ -425,6 +432,7 @@ Search core memory. Supports multiple retrieval modes.
 | `bound` | integer | no | Max results (default 10) |
 | `limit` | integer | no | Alias for `bound` |
 | `include_agent_notes` | boolean | no | Include raw agent notes in recall (default false) |
+| `node_type` | string | no | Optional post-filter: `PERSON`\|`FACT`\|`PREFERENCE`\|`EVENT`\|`TOPIC`\|`AFFECT`\|`BOUNDARY`\|`SKILL`\|`AGENT_NOTE`\|`CORE_REF` (applied after retrieval) |
 
 Returns `{"mode": ..., "total_found": N, "clock": {...}, "nodes": [...]}`.
 `clock` is today's date/time snapshot from the internal clock. Each node
@@ -436,15 +444,17 @@ temporal summary: `added`, `last_checked`, `access_count`, `layer`, `stale`).
 
 | Mode | What it does | Best for |
 |------|-------------|----------|
-| `SEMANTIC` | TF-IDF vector similarity against query text | Open-ended search: "What do I know about X?" |
-| `RELATED` | Follow edges from a starting node | Navigation: "What is connected to this node?" |
+| `SEMANTIC` | TF-IDF vector similarity against query text (pre-filtered via `node_index` overlap + stored `magnitude` reuse, FTS `MATCH` sanitized) | Open-ended search: "What do I know about X?" |
+| `RELATED` | Keyword `node_index` overlap + FTS5 `MATCH` fallback (not graph-neighbor; use `CLUSTER` for edge expansion) | Keyword/FTS search for related content |
 | `WHO_IS` | Case-insensitive search for node_type=`PERSON` + label contains query | "Tell me about user Sam" |
 | `WHAT_ABOUT` | Case-insensitive label or content match | Targeted lookup by name/title |
 | `PATH` | Shortest path between two nodes (query as `"A" -> "B"`) | "How are these two things connected?" |
-| `CLUSTER` | Expand outward from a node by edges | "What cluster of knowledge surrounds this?" |
+| `CLUSTER` | BFS expand outward from a node by edges + FTS | "What cluster of knowledge surrounds this?" |
 | `TIMELINE` | Nodes ordered by `created_at` within time proximity | "What happened around this event?" |
 | `RECENT` | Most recently created/updated nodes | "What's new?" |
-| `PRUNE` | Low-importance, low-trust nodes | Cleanup candidates |
+| `PRUNE` | Low-importance + low `access_count` + stale nodes | Cleanup candidates |
+
+> `recall` cache key is normalized (`lower()` + whitespace collapse, except `PATH` preserves case). FTS queries are sanitized via `_sanitize_fts_query` — `"`/`*` stripped with `LIKE` fallback on `OperationalError` (P0-7). `ephemeral_labels` (10) and unified `_looks_like_json_log` (`[:400]` + `timestamp && (post_count|load1m|status)`) `shared_lexicon.py:128` are excluded from `SEMANTIC` auto-link.
 
 #### `relate`
 

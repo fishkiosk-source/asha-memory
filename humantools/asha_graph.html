@@ -205,6 +205,10 @@ function nodeRadius(d) { return Math.max(8, Math.min(16, 8 + (d.importance || 0.
 function labelText(d) { return d.label.length > 30 ? d.label.slice(0, 28) + "…" : d.label; }
 function linkNodeId(value) { return typeof value === "object" ? value.id : value; }
 
+// ── Token helper for 0.0.0.0 dashboard (P2-4) ──
+function getToken(){try{const u=new URLSearchParams(location.search);let t=u.get('token');if(t){try{localStorage.setItem('asha_token',t);}catch(e){} return t;} try{return localStorage.getItem('asha_token')||'';}catch(e){return '';} }catch(e){return ''}}
+function authFetch(url, opts={}){const t=getToken();if(t){opts.headers=Object.assign({},opts.headers||{}, {'X-Api-Token':t}); if(url.startsWith('/api/') && !url.includes('token=')){url += (url.includes('?')?'&':'?')+'token='+encodeURIComponent(t);} } return fetch(url, opts);}
+
 // ── Performance knobs ───────────────────────────────────────────────────────
 let edgeLimit = 1500;   // slider-controlled render cap (was const MAX_EDGES)
 let edgeSortMode = "weight"; // weight | recent | type
@@ -1018,11 +1022,11 @@ function setStatus(msg, type) {
   try{
     const params=new URLSearchParams(location.search);
     if(params.has('embedded')){
-      fetch('/api/config').then(r=>r.json()).then(j=>{ if(j && j.config && j.config.ephemeral_labels) EPHEMERAL_SET = new Set(j.config.ephemeral_labels); }).catch(()=>{});
-      fetch('/api/db_bytes').then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.arrayBuffer(); }).then(buf=>{ if(buf.byteLength>0) loadFromBytes(buf); }).catch(()=>{});
+      authFetch('/api/config').then(r=>r.json()).then(j=>{ if(j && j.config && j.config.ephemeral_labels) EPHEMERAL_SET = new Set(j.config.ephemeral_labels); }).catch(()=>{});
+      authFetch('/api/db_bytes').then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.arrayBuffer(); }).then(buf=>{ if(buf.byteLength>0) loadFromBytes(buf); }).catch(()=>{});
     }
   }catch(e){}
-  try{ fetch('/api/config').then(r=>r.json()).then(j=>{ if(j && j.config && j.config.ephemeral_labels) EPHEMERAL_SET = new Set(j.config.ephemeral_labels); }).catch(()=>{}); }catch(e){}
+  try{ authFetch('/api/config').then(r=>r.json()).then(j=>{ if(j && j.config && j.config.ephemeral_labels) EPHEMERAL_SET = new Set(j.config.ephemeral_labels); }).catch(()=>{}); }catch(e){}
 })();
 </script>
 </body>

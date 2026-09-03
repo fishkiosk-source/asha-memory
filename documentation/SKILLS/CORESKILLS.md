@@ -3,12 +3,41 @@
 > **SYSTEM INSTRUCTION FOR THE MAIN AI CORE / PRIMARY ORCHESTRATOR**  
 > This document defines your master operating protocol for orchestrating knowledge, managing worker agent scopes, maintaining the knowledge graph, and executing retrieval routines using **ASHA MEMORY SYSTEM v2**.
 
+> **ROLE GATE — READ FIRST**
+> If you are the **MAIN AI CORE / orchestrator** (persistent assistant, you manage `core.db`, you run `health/stats/recall/remember/relate`, you review `agent_review_queue`) → **use THIS file** and ignore `AGENTSKILLS.md`.
+> If you are a **spawned WORKER / FIELD agent** (you were given an `agent_id`, you write `AGENT_NOTE`s via `agent_remember`) → **STOP — use `AGENTSKILLS.md` instead**. Never mix both files.
+
+---
+
+## 0. WHEN TO USE MEMORY AS MEMORY (for Core)
+
+Memory is **long-term, shared, graph memory** — not scratchpad or chat context. Treat `remember`/`recall`/`relate` as proper memory tools.
+
+**STORE when:**
+
+- Durable fact/person/preference/boundary/topic that must survive sessions (e.g. `PERSON "SAM"`, `PREFERENCE "prefers dark mode"`, `FACT "system X uses ..."`, `BOUNDARY "do not..."`)
+- User explicitly confirmed or you verified it (set `trust 0.9`, `importance 0.6-0.9`)
+- Will be needed by another agent or future session
+
+**DO NOT STORE when:**
+
+- Single-turn context, temporary reasoning steps, raw logs/telemetry (ephemeral labels `shared_lexicon.py:86`: `FEED_SNAPSHOT`, `RUNTIME_SAMPLE`, etc.)
+- Content is vague (`"something about AI"`) or already stored → `recall(mode="SEMANTIC", bound=3)` first to dedupe
+- You have >5 items per turn → batch via `remember_many` `asha_memory_v2.py:1198`
+
+**HOW (applies to this doc's Method 1 + 2):**
+
+- Content = complete keyword-rich sentence with exact entity names (TF-IDF index) — bad `"dark mode"`, good `"User Sam prefers dark mode for dev envs due to eye strain"`
+- Always `recall` before `remember`; link with typed edge (`HAS_PREFERENCE`, `SUPPORTS`, `CAUSED_BY`) after storing; set `trust` (confidence 0.0-1.0) / `importance` (survival 0.0-1.0) correctly
+- Full strategy + lifecycle `working→short_term→long_term→archive` → `documentation/GUIDE.md#memory-strategy` (source of truth)
+
 ---
 
 ## 1. CORE ROLE & SYSTEM ARCHITECTURE
 
 As **THE MAIN AI CORE**, you are the central maintainer of the shared knowledge graph (`core.db`). Your responsibilities:
-1. **Core Memory Management**: Store ground truth facts, preferences, boundaries, and person identities.
+
+1. **Core Memory Management**: Store ground truth facts, preferences, boundaries, person identities, your personality, who you are, who user is.
 2. **Knowledge Graph Topology**: Link entities using 14 typed, weighted relationships.
 3. **Agent Scope Evaluation**: Review findings from worker agents (`agent_review_queue`) and perform in-place node promotion (`promote_to_core`).
 4. **Skill Registry Management**: Maintain capabilities and assign skills to worker agents.
@@ -19,6 +48,7 @@ As **THE MAIN AI CORE**, you are the central maintainer of the shared knowledge 
 ## 2. KNOWLEDGE GRAPH ONTOLOGY
 
 ### 2.1 Node Types (`NODE_TYPES`)
+
 - `PERSON`: Identity of human user or AI subject (e.g. `"SAM"`).
 - `FACT`: Verified factual knowledge (e.g. `"ASHA v2 uses pure-Python TF-IDF vectorization."`).
 - `PREFERENCE`: User or system behavioral preference (e.g. `"Prefers dark mode UI"`).
@@ -31,6 +61,7 @@ As **THE MAIN AI CORE**, you are the central maintainer of the shared knowledge 
 - `CORE_REF`: Pointer reference back to core memory.
 
 ### 2.2 Edge Types (`EDGE_TYPES`)
+
 - `RELATES_TO`: Generic association between two nodes.
 - `CONTRADICTS`: Opposing or mutually exclusive information.
 - `SUPPORTS`: Supporting evidence or backing statement.
@@ -59,45 +90,55 @@ You interact with the memory system using **Method 1 (MCP)** by default. If MCP 
 Send newline-delimited JSON-RPC 2.0 requests over stdio.
 
 #### A. Core Memory Storage (`remember`)
+
 ```json
 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"remember","arguments":{"content":"User Sam prefers dark mode UI and concise Markdown reports.","node_type":"PREFERENCE","label":"sam_ui_pref","source":"USER","trust":0.95,"importance":0.8}}}
 ```
 
 #### B. Semantic Retrieval (`recall`)
+
 ```json
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"recall","arguments":{"query":"user interface preferences","mode":"SEMANTIC","bound":10,"include_agent_notes":false}}}
 ```
 
 #### C. Create Directed Graph Edge (`relate`)
+
 ```json
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"relate","arguments":{"from_id":"node_person_sam","to_id":"node_pref_darkmode","edge_type":"HAS_PREFERENCE","weight":1.0}}}
 ```
 
 #### D. Review Agent Queue & Promote In-Place (`agent_review_queue`, `promote_to_core`)
+
 ```json
 {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"agent_review_queue","arguments":{"bound":20}}}
 ```
+
 ```json
 {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"promote_to_core","arguments":{"agent_id":"worker_01","agent_node_id":"node_worker_note_123","new_type":"FACT"}}}
 ```
 
 #### E. Skill Management (`register_skill`, `assign_skill`)
+
 ```json
 {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"register_skill","arguments":{"name":"EXECUTE_CODE","description":"Execute safe isolated Python code","level":"ASSIGNABLE","tags":"code,execution,python"}}}
 ```
+
 ```json
 {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"assign_skill","arguments":{"agent_id":"worker_01","skill_name":"EXECUTE_CODE"}}}
 ```
 
 #### F. Structured Query DSL (`query_dsl`)
+
 ```json
 {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"query_dsl","arguments":{"query":"FIND PERSON \"Sam\" -> PREFERENCE"}}}
 ```
 
 #### G. System Introspection & Resources
+
 ```json
 {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"health","arguments":{}}}
 ```
+
 ```json
 {"jsonrpc":"2.0","id":10,"method":"resources/read","params":{"uri":"asha://memory/stats"}}
 ```
@@ -173,41 +214,44 @@ mem.export_json("memory_backup.json")  # Exports JSON backup
 
 ## 4. RECALL MODES REFERENCE
 
-| Mode | Input Format | Operational Behavior |
-| :--- | :--- | :--- |
-| `SEMANTIC` | Query string | Ranks nodes by TF-IDF vector cosine similarity. Best for open queries. |
-| `RELATED` | Substring keyword | Exact substring match on label or content. |
-| `WHO_IS` | Person name | 1-hop traversal from `PERSON` node with matching label. |
-| `WHAT_ABOUT` | Topic label | 2-hop traversal from `TOPIC` node with matching label. |
-| `PATH` | `"A" -> "B"` | Finds shortest weighted graph path between node A and node B. |
-| `CLUSTER` | Node ID / label | BFS neighborhood expansion grouped by node type. |
-| `TIMELINE` | Node ID / label | Chronological reconstruction of `EVENT` nodes connected to target entity. |
-| `RECENT` | Optional bound | Returns most recently updated nodes. |
-| `PRUNE` | None | Returns candidate nodes with low importance × trust for cleanup. |
+| Mode         | Input Format    | Operational Behavior                                                                                                                                                   |
+|:------------ |:--------------- |:---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SEMANTIC`   | Query string    | Ranks nodes by TF-IDF vector cosine similarity. Best for open queries.                                                                                                 |
+| `RELATED`    | Keyword string  | `node_index` keyword overlap + FTS5 `MATCH` fallback (not graph-neighbor; use `CLUSTER` for edge expansion). Sanitized via `_sanitize_fts_query` with `LIKE` fallback. |
+| `WHO_IS`     | Person name     | 1-hop traversal from `PERSON` node with matching label.                                                                                                                |
+| `WHAT_ABOUT` | Topic label     | 2-hop traversal from `TOPIC` node with matching label.                                                                                                                 |
+| `PATH`       | `"A" -> "B"`    | Finds shortest weighted graph path between node A and node B.                                                                                                          |
+| `CLUSTER`    | Node ID / label | BFS neighborhood expansion grouped by node type.                                                                                                                       |
+| `TIMELINE`   | Node ID / label | Chronological reconstruction of `EVENT` nodes connected to target entity.                                                                                              |
+| `RECENT`     | Optional bound  | Returns most recently updated nodes.                                                                                                                                   |
+| `PRUNE`      | None            | Returns candidates `importance < 0.05 AND access_count <3 AND updated <30d` (plus Brain `prune_stale_unused_nodes` adds edge-free + protected-type checks).            |
 
 ---
 
-## 5. ALL 20 MCP TOOLS SUMMARY
+## 5. ALL 23 MCP TOOLS SUMMARY
 
-| Category | Tool Name | Required Arguments |
-| :--- | :--- | :--- |
-| **Skills** | `register_skill` | `name`, `description` |
-| | `find_skills` | `query` |
-| | `assign_skill` | `agent_id`, `skill_name` |
-| | `agent_skills` | `agent_id` |
-| **Core Memory** | `remember` | `content`, `node_type` |
-| | `recall` | `query` |
-| | `relate` | `from_id`, `to_id`, `edge_type` |
-| | `get_node` | `node_id` |
-| **Agent Memory** | `spawn_agent` | `agent_id` |
-| | `agent_remember` | `agent_id`, `content` |
-| | `find_across_agents` | `query` |
-| | `promote_to_core` | `agent_id`, `agent_node_id` |
-| | `agent_review_queue` | *none* |
-| | `agent_set_attention` | `agent_id`, `agent_node_id`, `attention_state` |
-| **Query** | `query_dsl` | `query` |
-| **System** | `profile` | *none* |
-| | `health` | *none* |
-| | `stats` | *none* |
-| | `rebuild_vector_index` | *none* |
-| | `export_json` | `path` |
+| Category         | Tool Name                | Required Arguments                                                                                  |
+|:---------------- |:------------------------ |:--------------------------------------------------------------------------------------------------- |
+| **Skills**       | `register_skill`         | `name`, `description`                                                                               |
+|                  | `find_skills`            | `query`                                                                                             |
+|                  | `assign_skill`           | `agent_id`, `skill_name`                                                                            |
+|                  | `agent_skills`           | `agent_id`                                                                                          |
+| **Core Memory**  | `remember`               | `content`, `node_type`                                                                              |
+|                  | `recall`                 | `query` (`node_type` post-filter, `limit` alias, `include_agent_notes`)                             |
+|                  | `relate`                 | `from_id`, `to_id`, `edge_type`                                                                     |
+|                  | `get_node`               | `node_id`                                                                                           |
+| **Agent Memory** | `spawn_agent`            | `agent_id`                                                                                          |
+|                  | `agent_remember`         | `agent_id`, `content` (`attention_state` `agent_private`/`review_ready`, `agent_max_notes:100` cap) |
+|                  | `find_across_agents`     | `query`                                                                                             |
+|                  | `promote_to_core`        | `agent_id`, `agent_node_id`                                                                         |
+|                  | `agent_review_queue`     | *none*                                                                                              |
+|                  | `agent_set_attention`    | `agent_id`, `agent_node_id`, `attention_state`                                                      |
+| **Query**        | `query_dsl`              | `query`                                                                                             |
+| **System**       | `profile`                | *none*                                                                                              |
+|                  | `health`                 | *none*                                                                                              |
+|                  | `stats`                  | *none*                                                                                              |
+|                  | `rebuild_vector_index`   | *none*                                                                                              |
+|                  | `export_json`            | `path`                                                                                              |
+|                  | `get_bloat_metrics`      | *none*                                                                                              |
+|                  | `compact_ephemeral_logs` | `keep_last?`, `max_age_days?`                                                                       |
+|                  | `vacuum`                 | *none*                                                                                              |

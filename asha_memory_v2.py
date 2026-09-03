@@ -40,6 +40,20 @@ from dataclasses import dataclass, asdict
 from contextlib import contextmanager
 from collections import Counter, OrderedDict
 from internal_clock import InternalClock
+from shared_lexicon import (
+    _tokenize as _shared_tokenize,
+    _TOKEN_PATTERN,
+    STOPWORDS,
+    LEXICON_VERSION as SHARED_LEXICON_VERSION,
+    POSITIVE_WORDS as SHARED_POSITIVE_WORDS,
+    NEGATIVE_WORDS as SHARED_NEGATIVE_WORDS,
+    DEFAULT_EPHEMERAL_LABELS as SHARED_DEFAULT_EPHEMERAL,
+    _extract_keywords as _shared_extract_keywords,
+    _jaccard_similarity as _shared_jaccard,
+    _sentiment_score as _shared_sentiment,
+    _looks_like_json_log as _shared_looks_json,
+    _sanitize_fts_query,
+)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION
@@ -71,6 +85,13 @@ DEFAULT_CONFIG = {
     "long_term_promote_after": 15,
     # v2 internal clock: temporal context (node ages, TODAY node). Zero MCP changes.
     "internal_clock": True,
+    # Ephemeral telemetry allowlist — unified with Brain (see shared_lexicon.DEFAULT_EPHEMERAL_LABELS)
+    "ephemeral_labels": sorted(SHARED_DEFAULT_EPHEMERAL),
+    # P1-1: SQLite page cache (KB, negative = KB, positive = pages) — configurable per Asha's feedback
+    "sqlite_cache_size": -64000,
+    # P1-2: bucketed consolidate tuning (Asha feedback: make granularity tunable)
+    "consolidation_bucket_prefix": 4,
+    "consolidation_bucket_overlap": 2,
 }
 
 NODE_TYPES = {
@@ -94,42 +115,20 @@ MEMORY_LAYERS = {
     "archive":    {"decay": 1.0,   "boost": 0.0,  "capacity": None, "demote_after_s": None},
 }
 
-# Ephemeral telemetry labels — append-only logs that must not bloat the graph
-EPHEMERAL_LABELS = {
-    "FEED_SNAPSHOT", "RUNTIME_SAMPLE", "TIME_ENTRY", "DAILY_STATE",
-    "CRON_SUPERVISOR_REPORT", "BRAIN_MAINTENANCE_REPORT", "BRAIN_HISTORY",
-    "SCOUT_WRAPPER_TOP_STORIES", "HN_SCOUT_TOP3", "HN_SCOUT",
-}
+# Ephemeral / lexicon single-source — canonical definitions live in shared_lexicon.py
+# Kept as aliases so external imports (brain, humantools, tests) keep working.
+EPHEMERAL_LABELS = SHARED_DEFAULT_EPHEMERAL
+LEXICON_VERSION = SHARED_LEXICON_VERSION
+POSITIVE_WORDS = SHARED_POSITIVE_WORDS
+NEGATIVE_WORDS = SHARED_NEGATIVE_WORDS
 
-# Lexicon version — bump when tokenizer/stemmer/stopwords change
-LEXICON_VERSION = 3  # v2=Unicode tokenizer+no stemmer, v3=+2-letter stopwords
-
-# Contradiction sentiment word lists
-POSITIVE_WORDS = {
-    "like","love","prefer","enjoy","good","great","excellent","amazing","best",
-    "easy","fast","beautiful","perfect","recommend","awesome","fantastic","wonderful",
-    "agree","support","approve","yes","true","right","correct","reliable","works",
-}
-NEGATIVE_WORDS = {
-    "hate","dislike","avoid","bad","terrible","awful","worst","horrible",
-    "hard","slow","ugly","broken","useless","disaster","pathetic","garbage",
-    "disagree","oppose","reject","no","false","wrong","incorrect","unreliable","fails",
-}
-
-# ──────────────────────────────────────────────────────────────────────────────
-# SHARED TOKENIZER
-# ──────────────────────────────────────────────────────────────────────────────
-
-_TOKEN_PATTERN = re.compile(r"\b[\w']{2,}\b", re.UNICODE)
-
-def _tokenize(text: str, min_len: int = 2) -> List[str]:
-    """Tokenize text into words. Captures Unicode, digits, underscores, contractions.
-
-    - min_len=2 so 'AI', 'go', 'it' enter IDF (IDF naturally demotes noise).
-    - Unicode flag so 'Müller', 'français', 'über' are visible.
-    - Apostrophe kept so 'don\\'t', 'it\\'s' stay as single tokens.
-    """
-    return [w for w in _TOKEN_PATTERN.findall(text.lower()) if len(w) >= min_len]
+# Shared tokenizer / helpers — re-exported from shared_lexicon for backwards compat
+_TOKEN_PATTERN = _TOKEN_PATTERN  # noqa: keep name for external callers that import it
+_tokenize = _shared_tokenize
+_extract_keywords = _shared_extract_keywords
+_jaccard_similarity = _shared_jaccard
+_sentiment_score = _shared_sentiment
+_looks_like_json_log = _shared_looks_json
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -195,13 +194,13 @@ class TfidfVectorizer:
                 vec[t] = count * idf
         return vec
 
-    def cosine_similarity(self, vec_a: Dict[str, float], vec_b: Dict[str, float]) -> float:
+    def cosine_similarity(self, vec_a: Dict[str, float], vec_b: Dict[str, float], mag_a: float = None, mag_b: float = None) -> float:
         inter = set(vec_a) & set(vec_b)
         if not inter:
             return 0.0
         dot = sum(vec_a[t] * vec_b[t] for t in inter)
-        na = math.sqrt(sum(v * v for v in vec_a.values()))
-        nb = math.sqrt(sum(v * v for v in vec_b.values()))
+        na = mag_a if mag_a is not None else math.sqrt(sum(v * v for v in vec_a.values()))
+        nb = mag_b if mag_b is not None else math.sqrt(sum(v * v for v in vec_b.values()))
         return dot / (na * nb) if na and nb else 0.0
 
     def _tokenize(self, text: str) -> List[str]:
@@ -348,62 +347,8 @@ def _checksum(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
-STOPWORDS = {
-    # 2-letter noise words (min_len=2 in tokenizer; "ai" kept as domain signal)
-    "to","in","is","it","of","on","as","at","be","by","do","go","he","if","me",
-    "my","no","or","so","up","us","we","an","am","hi",
-    # 3+ letter noise words
-    "the","and","for","are","but","not","you","all","can","had","her","was","one",
-    "our","out","day","get","has","him","his","how","its","may","new","now","old",
-    "see","two","who","boy","did","she","use","her","way","many","oil","sit","set",
-    "run","eat","far","sea","eye","ago","off","too","any","say","man","try","ask",
-    "end","why","let","put","own","tell","very","when","much","would","there","their",
-    "what","said","have","each","which","will","about","could","other","after","first",
-    "never","these","think","where","being","every","great","might","shall","still",
-    "those","while","this","that","with","from","they","know","want","been","good",
-    "much","some","time","than","them","well","were","here","look","more","only",
-    "over","such","take","also","just","like","make","even","then","back","very",
-}
-
-
-def _extract_keywords(text: str, max_words: int = 20) -> List[Tuple[str, float]]:
-    words = _tokenize(text)
-    filtered = [w for w in words if w not in STOPWORDS]
-    counts = Counter(filtered)
-    total = len(filtered) or 1
-    return [(word, count / total) for word, count in counts.most_common(max_words)]
-
-
-def _jaccard_similarity(text_a: str, text_b: str) -> float:
-    set_a = set(_tokenize(text_a))
-    set_b = set(_tokenize(text_b))
-    if not set_a or not set_b:
-        return 0.0
-    intersection = set_a & set_b
-    union = set_a | set_b
-    return len(intersection) / len(union)
-
-
-def _sentiment_score(text: str) -> float:
-    """Return -1.0 to 1.0 sentiment score. Positive = affirmative, negative = negating."""
-    words = set(_tokenize(text))
-    pos = sum(1 for w in words if w in POSITIVE_WORDS)
-    neg = sum(1 for w in words if w in NEGATIVE_WORDS)
-    total = pos + neg
-    if total == 0:
-        return 0.0
-    return (pos - neg) / total
-
-
-def _looks_like_json_log(content: str) -> bool:
-    """Heuristic: raw JSON telemetry (FEED_SNAPSHOT / RUNTIME_SAMPLE) — not knowledge."""
-    if not content:
-        return False
-    s = content.strip()
-    if not s.startswith("{"):
-        return False
-    low = s[:400].lower()
-    return ("timestamp" in low and ("status" in low or "post_count" in low or "load1m" in low))
+# STOPWORDS and helpers are now imported from shared_lexicon (single source).
+# Kept as re-exports above; no local duplication.
 
 
 def _detect_contradiction_v2(text_a: str, text_b: str) -> Tuple[bool, float]:
@@ -417,7 +362,9 @@ def _detect_contradiction_v2(text_a: str, text_b: str) -> Tuple[bool, float]:
     a_words = set(re.findall(r"\b[a-zA-Z]+\b", text_a.lower()))
     b_words = set(re.findall(r"\b[a-zA-Z]+\b", text_b.lower()))
     shared = a_words & b_words
-    if len(shared) < 3:
+    # Filter 1-3 letter noise (it, is, and, etc.) + stopwords — prevents false positives
+    shared = {w for w in shared if len(w) > 3 and w not in STOPWORDS}
+    if len(shared) < 2:
         return False, 0.0
 
     # If shared vocabulary is purely structural JSON keys, suppress (FEED_SNAPSHOT noise)
@@ -551,6 +498,14 @@ CREATE TRIGGER IF NOT EXISTS nodes_au AFTER UPDATE ON nodes BEGIN
     INSERT INTO node_fts(node_fts, rowid, label, content) VALUES ('delete', old.rowid, old.label, old.content);
     INSERT INTO node_fts(rowid, label, content) VALUES (new.rowid, new.label, new.content);
 END;
+
+-- P1-5 performance indexes
+CREATE INDEX IF NOT EXISTS idx_nodes_label_type ON nodes(label, node_type);
+CREATE INDEX IF NOT EXISTS idx_nodes_updated_access ON nodes(updated_at, access_count);
+CREATE INDEX IF NOT EXISTS idx_nodes_source ON nodes(source);
+CREATE INDEX IF NOT EXISTS idx_memory_layers_layer ON memory_layers(layer);
+CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_node);
+CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_node);
 """
 
 AGENT_SCHEMA_V2 = """
@@ -645,6 +600,7 @@ class AshaMemory:
         self._query_log: List[Dict] = []
         self._cache_hits = 0
         self._cache_misses = 0
+        self._last_vacuum: Optional[Dict[str, Any]] = self.config.get("last_vacuum")  # P3-4
 
         self._init_core_db()
         self._agent_shards: Dict[str, "_AgentShard"] = {}
@@ -658,10 +614,23 @@ class AshaMemory:
 
     def _load_config(self) -> Dict[str, Any]:
         merged = dict(DEFAULT_CONFIG)
+        loaded: Dict[str, Any] = {}
         if self.config_path.exists():
             with open(self.config_path, "r") as f:
                 loaded = json.load(f)
                 merged.update(loaded)
+        # P2-2 alias: brain key prune_importance_floor <-> core prune_threshold (same semantics)
+        try:
+            # If file had legacy brain key and no core key, migrate
+            if "prune_importance_floor" in loaded and "prune_threshold" not in loaded:
+                merged["prune_threshold"] = loaded["prune_importance_floor"]
+            # Keep alias in sync for backwards compat (both written)
+            merged["prune_importance_floor"] = merged.get("prune_threshold", merged.get("prune_importance_floor", 0.05))
+            # also ensure ephemeral_labels sorted/deduped
+            if "ephemeral_labels" in merged and isinstance(merged["ephemeral_labels"], list):
+                merged["ephemeral_labels"] = sorted(set(merged["ephemeral_labels"]))
+        except Exception:
+            pass
         with open(self.config_path, "w") as f:
             json.dump(merged, f, indent=2)
         return merged
@@ -677,6 +646,16 @@ class AshaMemory:
         conn = sqlite3.connect(str(self.core_db_path))
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        # P1-1: configurable per Asha feedback (was hardcoded -64000)
+        try:
+            cs = int(self.config.get("sqlite_cache_size", -64000))
+            conn.execute(f"PRAGMA cache_size={cs}")
+        except Exception:
+            try:
+                conn.execute("PRAGMA cache_size=-64000")
+            except Exception:
+                pass
         try:
             yield conn
             conn.commit()
@@ -724,6 +703,19 @@ class AshaMemory:
                     "INSERT OR REPLACE INTO schema_meta (key, value) VALUES (?, ?)",
                     ("lexicon_version", str(LEXICON_VERSION))
                 )
+
+            # P0-1 migration (Asha feedback): existing DBs have orphaned edges from pre-FK era.
+            # Run one-time purge_orphans + note VACUUM if freelist. Documented in Improvementplan.md P0-1.
+            try:
+                orphans = conn.execute("SELECT COUNT(*) FROM edges WHERE from_node NOT IN (SELECT node_id FROM nodes) OR to_node NOT IN (SELECT node_id FROM nodes)").fetchone()[0]
+                if orphans:
+                    conn.execute("DELETE FROM edges WHERE from_node NOT IN (SELECT node_id FROM nodes) OR to_node NOT IN (SELECT node_id FROM nodes)")
+                    conn.execute("DELETE FROM node_vectors WHERE node_id NOT IN (SELECT node_id FROM nodes)")
+                    conn.execute("DELETE FROM memory_layers WHERE node_id NOT IN (SELECT node_id FROM nodes)")
+                    conn.execute("DELETE FROM access_log WHERE node_id NOT IN (SELECT node_id FROM nodes)")
+                    conn.execute("DELETE FROM node_index WHERE node_id NOT IN (SELECT node_id FROM nodes)")
+            except Exception:
+                pass
 
     # ── TF-IDF vectorizer ────────────────────────────────────────────────────
 
@@ -802,8 +794,17 @@ class AshaMemory:
         )
 
     def rebuild_vector_index(self):
-        """Rebuild all TF-IDF vectors (call after bulk import)."""
+        """Rebuild all TF-IDF vectors (call after bulk import).
+
+        Asha feedback P1-3: full table scan holds write lock while brain may
+        dedup. Set busy_timeout and schedule rebuilds outside brain jobs
+        (BrainEngine does so after mutations). Advisory lock via busy_timeout.
+        """
         with self._core_conn() as conn:
+            try:
+                conn.execute("PRAGMA busy_timeout=5000")
+            except Exception:
+                pass
             # Clear existing vectors
             conn.execute("DELETE FROM node_vectors")
             self._invalidate_vectorizer()
@@ -819,6 +820,57 @@ class AshaMemory:
                         (row["node_id"], json.dumps(vec), mag)
                     )
 
+    @staticmethod
+    def rebuild_vector_index_for_path(db_path: str | Path) -> Dict[str, Any]:
+        """Static rebuild without instantiating AshaMemory (no config side-effect) — P2-6.
+
+        Used by BrainEngine.rebuild_vectors to avoid AshaMemory(base_path=parent) which
+        creates config.json and re-runs migrations. Pure sqlite + vectorizer.
+        Asha feedback: set busy_timeout to reduce contention with brain dedup.
+        """
+        import time as _t
+        t0 = _t.time()
+        dbp = Path(db_path)
+        if not dbp.exists():
+            return {"status": "error", "message": f"DB not found: {dbp}"}
+        conn = sqlite3.connect(str(dbp))
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("PRAGMA busy_timeout=5000")
+        except Exception:
+            pass
+        try:
+            conn.execute("DELETE FROM node_vectors")
+            conn.commit()
+            # Build vectorizer from all nodes (same as AshaMemory._build_vectorizer)
+            cur = conn.execute("SELECT label, content FROM nodes")
+            texts = [(r["label"] or "") + " " + (r["content"] or "") for r in cur.fetchall()]
+            v = TfidfVectorizer()
+            if texts:
+                v.fit(texts)
+            cur = conn.execute("SELECT node_id, label, content FROM nodes")
+            count = 0
+            for row in cur.fetchall():
+                text = (row["label"] or "") + " " + (row["content"] or "")
+                vec = v.transform(text)
+                if vec:
+                    mag = math.sqrt(sum(vv * vv for vv in vec.values()))
+                    conn.execute(
+                        "INSERT OR REPLACE INTO node_vectors (node_id, vector, magnitude) VALUES (?, ?, ?)",
+                        (row["node_id"], json.dumps(vec), mag)
+                    )
+                    count += 1
+            conn.commit()
+            return {"status": "success", "vectors_rebuilt": count, "duration_s": round(_t.time() - t0, 3)}
+        except Exception as e:
+            return {"status": "error", "message": f"Static rebuild failed: {e}"}
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
     def vacuum(self) -> Dict[str, Any]:
         """Reclaim freelist space. Call after bulk deletes (brain compaction)."""
         before = self.core_db_path.stat().st_size if self.core_db_path.exists() else 0
@@ -826,6 +878,7 @@ class AshaMemory:
         conn = sqlite3.connect(str(self.core_db_path))
         try:
             try:
+                conn.execute("PRAGMA foreign_keys=ON")
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             except Exception:
                 pass
@@ -835,7 +888,7 @@ class AshaMemory:
             conn.close()
         after = self.core_db_path.stat().st_size if self.core_db_path.exists() else 0
         self._cache.invalidate()
-        return {
+        result = {
             "before_bytes": before,
             "after_bytes": after,
             "saved_bytes": before - after,
@@ -843,20 +896,31 @@ class AshaMemory:
             "before_mb": round(before / (1024 * 1024), 2),
             "after_mb": round(after / (1024 * 1024), 2),
         }
+        # P3-4: persist last_vacuum for profile()
+        try:
+            self._last_vacuum = {"at": _now(), "iso": datetime.now().isoformat(timespec="seconds"), **result}
+            self.config["last_vacuum"] = self._last_vacuum
+            self._save_config()
+        except Exception:
+            pass
+        return result
 
     def get_bloat_info(self) -> Dict[str, Any]:
-        """Freelist + ephemeral counts for health dashboards."""
+        """Freelist + ephemeral counts for health dashboards (SQL-only, no full fetch)."""
         with self._core_conn() as conn:
             page_count = conn.execute("PRAGMA page_count").fetchone()[0]
             page_size = conn.execute("PRAGMA page_size").fetchone()[0]
             freelist = conn.execute("PRAGMA freelist_count").fetchone()[0]
+            # ephemeral counts — unified allowlist from config
+            ephemeral_allow = self.config.get("ephemeral_labels", sorted(SHARED_DEFAULT_EPHEMERAL))
             eph_counts = {}
-            for lbl in EPHEMERAL_LABELS:
+            for lbl in ephemeral_allow:
                 eph_counts[lbl] = conn.execute("SELECT COUNT(*) FROM nodes WHERE label = ?", (lbl,)).fetchone()[0]
-            json_logs = conn.execute("SELECT COUNT(*) FROM nodes WHERE content LIKE '{\"%timestamp\"%' OR content LIKE '{%\"load1m\"%'").fetchone()[0] if False else 0
-            # simpler: count via python heuristic
+            # JSON-log heuristic via SQL LIKE sampling (no Python full fetch)
             try:
-                json_logs = sum(1 for r in conn.execute("SELECT content FROM nodes").fetchall() if _looks_like_json_log(r[0]))
+                json_logs = conn.execute(
+                    "SELECT COUNT(*) FROM nodes WHERE content LIKE '{%\"timestamp\"%' AND (content LIKE '%\"post_count\"%' OR content LIKE '%\"load1m\"%' OR content LIKE '%\"status\"%')"
+                ).fetchone()[0]
             except Exception:
                 json_logs = 0
             contr = conn.execute("SELECT COUNT(*) FROM edges WHERE edge_type='CONTRADICTS'").fetchone()[0]
@@ -905,18 +969,46 @@ class AshaMemory:
                 (_now(), node_id)
             )
         elif layer == "working" and access_count == 0:
-            # Check if working memory is full — evict oldest if needed
+            # Scope-aware working evict — agent fill never evicts core working
             cap = self.config.get("working_memory_capacity", 20)
-            count = conn.execute("SELECT COUNT(*) as c FROM memory_layers WHERE layer = 'working'").fetchone()["c"]
-            if count > cap:
-                oldest = conn.execute(
-                    "SELECT node_id FROM memory_layers WHERE layer = 'working' ORDER BY promoted_at ASC LIMIT 1"
-                ).fetchone()
-                if oldest:
-                    conn.execute(
-                        "UPDATE memory_layers SET layer = 'short_term', promoted_at = ?, layer_order = 2 WHERE node_id = ?",
-                        (_now(), oldest["node_id"])
-                    )
+            # classify target node scope (agent vs core) using same rule as brain
+            try:
+                cur_meta = conn.execute("SELECT node_type, metadata FROM nodes WHERE node_id = ?", (node_id,)).fetchone()
+                cmeta = json.loads(cur_meta["metadata"]) if cur_meta and cur_meta["metadata"] else {}
+                is_agent = (cur_meta["node_type"] == "AGENT_NOTE" and cmeta.get("attention_state") != "core_verified") or bool(cmeta.get("agent_scoped") and cmeta.get("attention_state") != "core_verified")
+            except Exception:
+                is_agent = False
+            if is_agent:
+                rows = conn.execute("SELECT n.node_id, n.metadata, n.node_type, ml.promoted_at FROM nodes n JOIN memory_layers ml ON n.node_id=ml.node_id WHERE ml.layer='working'").fetchall()
+                agent_working = []
+                for r in rows:
+                    try:
+                        m = json.loads(r["metadata"]) if r["metadata"] else {}
+                    except Exception:
+                        m = {}
+                    is_a = (r["node_type"] == "AGENT_NOTE" and m.get("attention_state") != "core_verified") or (bool(m.get("agent_scoped")) and m.get("attention_state") != "core_verified")
+                    if is_a:
+                        agent_working.append(r)
+                agent_cap = int(self.config.get("agent_working_high_water", cap - 8 if cap > 12 else cap))
+                if len(agent_working) > agent_cap:
+                    agent_working.sort(key=lambda x: x["promoted_at"] or 0)
+                    oldest = agent_working[0]
+                    if oldest:
+                        conn.execute(
+                            "UPDATE memory_layers SET layer = 'short_term', promoted_at = ?, layer_order = 2 WHERE node_id = ?",
+                            (_now(), oldest["node_id"])
+                        )
+            else:
+                count = conn.execute("SELECT COUNT(*) as c FROM memory_layers WHERE layer = 'working'").fetchone()["c"]
+                if count > cap:
+                    oldest = conn.execute(
+                        "SELECT node_id FROM memory_layers WHERE layer = 'working' ORDER BY promoted_at ASC LIMIT 1"
+                    ).fetchone()
+                    if oldest:
+                        conn.execute(
+                            "UPDATE memory_layers SET layer = 'short_term', promoted_at = ?, layer_order = 2 WHERE node_id = ?",
+                            (_now(), oldest["node_id"])
+                        )
 
     # ── Internal helpers ─────────────────────────────────────────────────────
 
@@ -956,9 +1048,12 @@ class AshaMemory:
         )
         self._update_layer_on_access(conn, node_id)
 
+    def _ephemeral_labels_set(self):
+        return set(self.config.get("ephemeral_labels", sorted(SHARED_DEFAULT_EPHEMERAL)))
+
     def _auto_link(self, conn: sqlite3.Connection, new_node_id: str, content: str, label: str):
         # Ephemeral telemetry logs should not sprout RELATES_TO edges — they are not knowledge
-        if label in EPHEMERAL_LABELS or _looks_like_json_log(content):
+        if label in self._ephemeral_labels_set() or _looks_like_json_log(content):
             return
         keywords = set(w for w, _ in _extract_keywords(content + " " + label))
         if not keywords:
@@ -986,7 +1081,7 @@ class AshaMemory:
             try:
                 cand = conn.execute("SELECT node_type, label, content, metadata FROM nodes WHERE node_id = ?", (existing_id,)).fetchone()
                 if cand:
-                    if cand["label"] in EPHEMERAL_LABELS or _looks_like_json_log(cand["content"]):
+                    if cand["label"] in self._ephemeral_labels_set() or _looks_like_json_log(cand["content"]):
                         continue
                     cand_meta = json.loads(cand["metadata"]) if cand["metadata"] else {}
                     cand_is_agent = (cand["node_type"] == "AGENT_NOTE" and cand_meta.get("attention_state") != "core_verified") or bool(cand_meta.get("agent_scoped") and cand_meta.get("attention_state") != "core_verified")
@@ -1010,7 +1105,7 @@ class AshaMemory:
         if new_node.node_type != "FACT":
             return []
         # Telemetry logs are not knowledge — never contradictions
-        if new_node.label in EPHEMERAL_LABELS or _looks_like_json_log(new_node.content):
+        if new_node.label in self._ephemeral_labels_set() or _looks_like_json_log(new_node.content):
             return []
         keywords = [w for w, _ in _extract_keywords(new_node.content)[:5]]
         if not keywords:
@@ -1027,7 +1122,7 @@ class AshaMemory:
         contradictions = []
         for row in cursor.fetchall():
             # skip ephemeral candidates — JSON shared keys cause false positives
-            if row["label"] in EPHEMERAL_LABELS or _looks_like_json_log(row["content"]):
+            if row["label"] in self._ephemeral_labels_set() or _looks_like_json_log(row["content"]):
                 continue
             is_contra, conf = _detect_contradiction_v2(new_node.content, row["content"])
             if is_contra and conf > 0.5:
@@ -1130,6 +1225,63 @@ class AshaMemory:
         self._cache.invalidate()
         return node_id
 
+    def remember_many(self, items: List[Dict[str, Any]]) -> List[str]:
+        """Batch insert — single transaction, single vector invalidate + rebuild.
+
+        items: [{content, node_type, label?, source?, trust?, importance?, metadata?}, ...]
+        Returns list of node_ids in order. Stdlib-only, no LLM.
+        """
+        if not items:
+            return []
+        ids: List[str] = []
+        now = _now()
+        max_len = self.config["max_content_length"]
+        # Prepare rows
+        rows = []
+        for it in items:
+            content = it.get("content", "")
+            node_type = it.get("node_type", "FACT")
+            if node_type not in NODE_TYPES:
+                raise ValueError(f"Invalid node_type: {node_type}")
+            if len(content) > max_len:
+                content = content[:max_len-3] + "..."
+            label = it.get("label") or content[:30]
+            trust = it.get("trust", self.config["default_trust"])
+            importance = it.get("importance", self.config["default_importance"])
+            metadata = it.get("metadata") or {}
+            source = it.get("source", "CORE")
+            nid = _uuid()
+            ids.append(nid)
+            rows.append((nid, node_type, label, content, source, trust, now, now, 0, importance, _checksum(content), json.dumps(metadata), label, content, metadata))
+
+        with self._core_conn() as conn:
+            for (nid, ntype, label, content, source, trust, c_at, u_at, ac, imp, chk, meta_json, _lbl, _cnt, meta) in rows:
+                conn.execute(
+                    """INSERT INTO nodes
+                       (node_id, node_type, label, content, source, trust_level,
+                        created_at, updated_at, access_count, importance, checksum, metadata)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (nid, ntype, label, content, source, trust, c_at, u_at, ac, imp, chk, meta_json)
+                )
+                self._build_index(conn, nid, label, content)
+                if not meta.get("clock_node"):
+                    self._auto_link(conn, nid, content, label)
+                self._init_node_layer(conn, nid)
+            # Single invalidate + lazy rebuild: store vectors in one go after bulk
+            self._invalidate_vectorizer()
+            # Bulk compute vectors using single vectorizer build
+            v = self._load_vectorizer(conn)
+            for (nid, _t, label, content, *_rest) in rows:
+                text = (label or "") + " " + (content or "")
+                vec = v.transform(text)
+                mag = math.sqrt(sum(vv * vv for vv in vec.values())) if vec else 0.0
+                conn.execute(
+                    "INSERT OR REPLACE INTO node_vectors (node_id, vector, magnitude) VALUES (?, ?, ?)",
+                    (nid, json.dumps(vec), mag)
+                )
+        self._cache.invalidate()
+        return ids
+
     def recall(self, query: str, mode: str = "RELATED", bound: int = None,
                include_agent_notes: bool = False) -> RecallResult:
         """
@@ -1152,8 +1304,9 @@ class AshaMemory:
         start_time = time.time()
         cache_hit = False
 
-        # Check cache
-        cache_key = f"{mode}:{query}:{bound}:agent_notes={include_agent_notes}"
+        # Check cache — normalize query for non-PATH modes (whitespace/case)
+        norm_q = query.strip() if mode == "PATH" else re.sub(r"\s+", " ", query.strip().lower())
+        cache_key = f"{mode}:{norm_q}:{bound}:agent_notes={include_agent_notes}"
         cached = self._cache.get(cache_key)
         if cached is not None:
             self._cache_hits += 1
@@ -1238,11 +1391,21 @@ class AshaMemory:
         )
         person_row = cursor.fetchone()
         if not person_row:
-            cursor = conn.execute(
-                "SELECT * FROM nodes WHERE node_id IN (SELECT rowid FROM node_fts WHERE node_fts MATCH ? LIMIT 1)",
-                (label,)
-            )
-            person_row = cursor.fetchone()
+            # FTS fallback — sanitize to avoid 'fts5: syntax error' on quotes/* etc.
+            fts_q = _sanitize_fts_query(label)
+            if fts_q:
+                try:
+                    cursor = conn.execute(
+                        "SELECT * FROM nodes WHERE node_id IN (SELECT rowid FROM node_fts WHERE node_fts MATCH ? LIMIT 1)",
+                        (fts_q,)
+                    )
+                    person_row = cursor.fetchone()
+                except sqlite3.OperationalError:
+                    cursor = conn.execute(
+                        "SELECT * FROM nodes WHERE label LIKE ? OR content LIKE ? LIMIT 1",
+                        (f"%{label}%", f"%{label}%")
+                    )
+                    person_row = cursor.fetchone()
         if not person_row:
             return [], 0
         person_id = person_row["node_id"]
@@ -1283,11 +1446,20 @@ class AshaMemory:
         )
         topic_row = cursor.fetchone()
         if not topic_row:
-            cursor = conn.execute(
-                "SELECT * FROM nodes WHERE node_id IN (SELECT rowid FROM node_fts WHERE node_fts MATCH ? LIMIT 1)",
-                (query,)
-            )
-            topic_row = cursor.fetchone()
+            fts_q = _sanitize_fts_query(query)
+            if fts_q:
+                try:
+                    cursor = conn.execute(
+                        "SELECT * FROM nodes WHERE node_id IN (SELECT rowid FROM node_fts WHERE node_fts MATCH ? LIMIT 1)",
+                        (fts_q,)
+                    )
+                    topic_row = cursor.fetchone()
+                except sqlite3.OperationalError:
+                    cursor = conn.execute(
+                        "SELECT * FROM nodes WHERE label LIKE ? OR content LIKE ? LIMIT 1",
+                        (f"%{query}%", f"%{query}%")
+                    )
+                    topic_row = cursor.fetchone()
         if not topic_row:
             return [], 0
         topic_id = topic_row["node_id"]
@@ -1337,8 +1509,15 @@ class AshaMemory:
     def _recall_related(self, conn, query, bound):
         keywords = [w for w, _ in _extract_keywords(query)]
         if not keywords:
-            cursor = conn.execute("SELECT * FROM nodes WHERE rowid IN (SELECT rowid FROM node_fts WHERE node_fts MATCH ? LIMIT ?)", (query, bound))
-            rows = cursor.fetchall()
+            fts_q = _sanitize_fts_query(query)
+            if not fts_q:
+                return [], 0
+            try:
+                cursor = conn.execute("SELECT * FROM nodes WHERE rowid IN (SELECT rowid FROM node_fts WHERE node_fts MATCH ? LIMIT ?)", (fts_q, bound))
+                rows = cursor.fetchall()
+            except sqlite3.OperationalError:
+                cursor = conn.execute("SELECT * FROM nodes WHERE label LIKE ? OR content LIKE ? LIMIT ?", (f"%{query}%", f"%{query}%", bound))
+                rows = cursor.fetchall()
             result = []
             for row in rows:
                 self._bump_access(conn, row["node_id"])
@@ -1388,6 +1567,19 @@ class AshaMemory:
             return [], 0
 
         floor = self.config.get("semantic_relevance_floor", 0.1)
+        # P1-1: reuse stored magnitude + pre-filter via node_index to avoid full scan
+        query_mag = math.sqrt(sum(v * v for v in query_vec.values())) if query_vec else 0.0
+        # Candidate pre-filter: nodes sharing at least one keyword with query (fast via index)
+        query_terms = list(query_vec.keys())
+        candidate_ids = None
+        if query_terms:
+            try:
+                ph = ",".join("?" * len(query_terms))
+                cur = conn.execute(f"SELECT DISTINCT node_id FROM node_index WHERE word IN ({ph})", (*query_terms,))
+                candidate_ids = {r[0] for r in cur.fetchall()}
+            except Exception:
+                candidate_ids = None
+
         cursor = conn.execute("""
             SELECT n.*, nv.vector, nv.magnitude
             FROM nodes n
@@ -1395,9 +1587,26 @@ class AshaMemory:
         """)
         scored = []
         for row in cursor.fetchall():
+            # pre-filter: skip nodes with zero keyword overlap when candidate set is meaningful
+            if candidate_ids is not None and len(candidate_ids) > 0 and len(candidate_ids) < 5000:
+                if row["node_id"] not in candidate_ids:
+                    continue
             node_vec_str = row["vector"] if isinstance(row, sqlite3.Row) else (row.get("vector") if isinstance(row, dict) else None)
             node_vec = json.loads(node_vec_str) if node_vec_str else {}
-            sim = v.cosine_similarity(query_vec, node_vec)
+            if not node_vec:
+                # lacunary: compute on the fly (should be rare after rebuild)
+                text = (row["label"] or "") + " " + (row["content"] or "")
+                node_vec = v.transform(text)
+                node_mag = math.sqrt(sum(vv * vv for vv in node_vec.values())) if node_vec else 0.0
+            else:
+                node_mag = row["magnitude"] if isinstance(row, sqlite3.Row) else row.get("magnitude", 0)
+                try:
+                    node_mag = float(node_mag) if node_mag else 0.0
+                except Exception:
+                    node_mag = 0.0
+                if not node_mag:
+                    node_mag = math.sqrt(sum(vv * vv for vv in node_vec.values())) if node_vec else 0.0
+            sim = v.cosine_similarity(query_vec, node_vec, mag_a=query_mag, mag_b=node_mag)
             if sim >= floor:
                 scored.append((sim, row))
         scored.sort(key=lambda x: -x[0])
@@ -1713,6 +1922,28 @@ class AshaMemory:
             max_len = self.config.get("agent_max_content_length", 800)
             if len(content) > max_len:
                 content = content[:max_len-3] + "..."
+            # Enforce agent_max_notes P0-6: drop oldest agent_private note if cap exceeded
+            max_notes = self.config.get("agent_max_notes", 100)
+            try:
+                with self._core_conn() as conn:
+                    cnt = conn.execute("SELECT COUNT(*) FROM nodes WHERE source = ?", (f"AGENT_{agent_id}",)).fetchone()[0]
+                    if cnt >= max_notes:
+                        # delete oldest agent_private (never delete review_ready)
+                        oldest = conn.execute("""
+                            SELECT node_id FROM nodes
+                            WHERE source = ? AND json_extract(metadata,'$.attention_state')='agent_private'
+                            ORDER BY updated_at ASC LIMIT 1
+                        """, (f"AGENT_{agent_id}",)).fetchone()
+                        if oldest:
+                            # FK cascade will clean vectors/layers/access/index (FK ON), but explicitly prune for safety
+                            conn.execute("DELETE FROM nodes WHERE node_id = ?", (oldest["node_id"],))
+                        else:
+                            # fallback: delete oldest regardless if all are review_ready (rare)
+                            oldest2 = conn.execute("SELECT node_id FROM nodes WHERE source = ? ORDER BY updated_at ASC LIMIT 1", (f"AGENT_{agent_id}",)).fetchone()
+                            if oldest2:
+                                conn.execute("DELETE FROM nodes WHERE node_id = ?", (oldest2["node_id"],))
+            except Exception:
+                pass  # cap enforcement is best-effort; remember must still succeed
             # Raw agent work is always stored as AGENT_NOTE. The caller may use
             # richer types only after an explicit promotion/review decision.
             return self.remember(
@@ -1884,22 +2115,73 @@ class AshaMemory:
         """
         v2 consolidation using TF-IDF cosine similarity.
         Merges nodes with similarity >= 0.85, links with >= 0.50.
+        P1-2: bucketed with tunable granularity (Asha feedback).
         """
         merged = 0
         edges_created = 0
 
         with self._core_conn() as conn:
-            cursor = conn.execute("SELECT n.node_id, n.content, n.label, nv.vector FROM nodes n LEFT JOIN node_vectors nv ON n.node_id = nv.node_id")
+            cursor = conn.execute("SELECT n.node_id, n.content, n.label, n.checksum, nv.vector FROM nodes n LEFT JOIN node_vectors nv ON n.node_id = nv.node_id")
             nodes = cursor.fetchall()
 
             # Load or build vectorizer
             v = self._load_vectorizer(conn)
             high_thresh = self.config["consolidation_similarity_high"]
             link_thresh = self.config["consolidation_similarity_link"]
+            # P1-2 bucket params (tunable)
+            bucket_overlap = int(self.config.get("consolidation_bucket_overlap", 2))
+            bucket_prefix = int(self.config.get("consolidation_bucket_prefix", 4))
+            # Build quick lookup for node index position
+            node_by_id = {n["node_id"]: (idx, n) for idx, n in enumerate(nodes)}
+            # Pre-bucket by checksum prefix to limit candidate set when n large
+            use_bucket = len(nodes) > 200
+            # Track deleted ids to skip
+            deleted = set()
 
             for i in range(len(nodes)):
-                for j in range(i + 1, len(nodes)):
-                    a, b = nodes[i], nodes[j]
+                if nodes[i]["node_id"] in deleted:
+                    continue
+                a = nodes[i]
+                # Candidate set via bucket: checksum prefix + keyword overlap
+                candidates = None
+                if use_bucket:
+                    # Prefix bucket: only compare within same checksum prefix when prefix>0
+                    if bucket_prefix > 0:
+                        pref = (a["checksum"] or "")[:bucket_prefix]
+                        # collect ids in same prefix bucket
+                        pref_ids = [n["node_id"] for n in nodes if (n["checksum"] or "")[:bucket_prefix] == pref and n["node_id"] != a["node_id"]]
+                        candidates = set(pref_ids)
+                    # Refine via keyword overlap using node_index (semantic bucket)
+                    try:
+                        kws = [w for w, _ in _extract_keywords((a["label"] or "") + " " + (a["content"] or ""))][:6]
+                        if kws:
+                            ph = ",".join("?" * len(kws))
+                            cur = conn.execute(f"SELECT node_id, COUNT(*) as cnt FROM node_index WHERE word IN ({ph}) GROUP BY node_id HAVING cnt >= ?", (*kws, bucket_overlap))
+                            kw_ids = {r[0] for r in cur.fetchall()}
+                            if candidates is not None:
+                                # intersect prefix + keyword (tight) if both available, else union if intersect empty
+                                inter = candidates & kw_ids
+                                candidates = inter if inter else kw_ids
+                            else:
+                                candidates = kw_ids
+                    except Exception:
+                        pass
+                    # Guard: if bucket too large (>150) cap to first 150 to avoid re-introducing O(n²)
+                    if candidates is not None and len(candidates) > 150:
+                        # keep only earliest candidates (deterministic)
+                        candidates = set(list(candidates)[:150])
+                    # If no candidates, skip cosine
+                    if candidates is not None and not candidates:
+                        continue
+                    # Iterate only candidates with j > i
+                    cand_indices = sorted([node_by_id[cid][0] for cid in candidates if cid in node_by_id and node_by_id[cid][0] > i and cid not in deleted], reverse=False)
+                else:
+                    cand_indices = range(i + 1, len(nodes))
+
+                for j in cand_indices:
+                    b = nodes[j]
+                    if b["node_id"] in deleted:
+                        continue
                     vec_a = json.loads(a["vector"]) if a["vector"] else v.transform((a["label"] or "") + " " + (a["content"] or ""))
                     vec_b = json.loads(b["vector"]) if b["vector"] else v.transform((b["label"] or "") + " " + (b["content"] or ""))
                     sim = v.cosine_similarity(vec_a, vec_b)
@@ -1914,6 +2196,7 @@ class AshaMemory:
                         conn.execute("UPDATE edges SET from_node = ? WHERE from_node = ?", (a["node_id"], b["node_id"]))
                         conn.execute("UPDATE edges SET to_node = ? WHERE to_node = ?", (a["node_id"], b["node_id"]))
                         conn.execute("DELETE FROM nodes WHERE node_id = ?", (b["node_id"],))
+                        deleted.add(b["node_id"])
                         merged += 1
                     elif sim >= link_thresh:
                         try:
@@ -1978,9 +2261,30 @@ class AshaMemory:
                        hierarchy_access: List[str] = None,
                        asha_use: str = "", agent_use: str = "",
                        metadata: Dict = None) -> str:
+        """Register a SKILL node. Idempotent — re-registering the same label updates
+        the existing node in place (preserves node_id/edges) instead of duplicating.
+        trust=provenance (source reliability), importance=retention (survival). P4."""
         meta = {"skill_level": level, "category": category, "domain": domain,
                 "hierarchy_access": hierarchy_access or [], "asha_use": asha_use, "agent_use": agent_use}
         if metadata: meta.update(metadata)
+        # Idempotent upsert: avoid duplicate SKILL nodes on repeated load_skill_registry
+        with self._core_conn() as conn:
+            row = conn.execute("SELECT node_id FROM nodes WHERE node_type='SKILL' AND label = ?", (name,)).fetchone()
+            if row:
+                nid = row["node_id"]
+                now = _now()
+                checksum = _checksum(description)
+                conn.execute(
+                    "UPDATE nodes SET content=?, metadata=?, updated_at=?, checksum=?, trust_level=?, importance=? WHERE node_id=?",
+                    (description, json.dumps(meta), now, checksum, 1.0, 0.9, nid)
+                )
+                # rebuild keyword index + vector for updated content
+                conn.execute("DELETE FROM node_index WHERE node_id=?", (nid,))
+                self._build_index(conn, nid, name, description)
+                self._invalidate_vectorizer()
+                self._compute_and_store_vector(conn, nid, name, description)
+                self._cache.invalidate()
+                return nid
         return self.remember(content=description, node_type="SKILL", label=name,
                              source="CORE", trust=1.0, importance=0.9, metadata=meta)
 
@@ -2244,7 +2548,7 @@ class AshaMemory:
         ET.SubElement(graphml, "key", id="k_weight", for_="edge", attr_name="weight", attr_type="double")
         ET.SubElement(graphml, "key", id="k_etype", for_="edge", attr_name="edge_type", attr_type="string")
 
-        graph = ET.SubElement(graphml, "graph", edgedefault="undirected")
+        graph = ET.SubElement(graphml, "graph", edgedefault="directed")
 
         with self._core_conn() as conn:
             for row in conn.execute("SELECT * FROM nodes").fetchall():
@@ -2302,6 +2606,10 @@ class AshaMemory:
         with self._core_conn() as conn:
             vector_count = conn.execute("SELECT COUNT(*) as c FROM node_vectors").fetchone()["c"]
             node_count = conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"]
+            try:
+                persistent_q = conn.execute("SELECT COUNT(*) FROM query_log").fetchone()[0]
+            except Exception:
+                persistent_q = 0
         return {
             "recent_avg_ms": round(avg_ms, 2),
             "cache_hit_rate": round(hit_rate, 3),
@@ -2309,11 +2617,13 @@ class AshaMemory:
             "cache_misses": self._cache_misses,
             "vector_index_freshness": f"{vector_count}/{node_count} nodes indexed",
             "query_log_size": len(self._query_log),
+            "persistent_query_log_size": persistent_q,
             "cache_size": len(self._cache.cache),
+            "last_vacuum": getattr(self, "_last_vacuum", self.config.get("last_vacuum")),
         }
 
     def health(self) -> List[str]:
-        """Integrity check. Returns list of issues found."""
+        """Integrity check. Returns list of issues found. P2-5 expanded."""
         issues = []
         with self._core_conn() as conn:
             orphans = conn.execute("""
@@ -2340,6 +2650,34 @@ class AshaMemory:
             ver = conn.execute("SELECT value FROM schema_meta WHERE key='version'").fetchone()
             if not ver or ver["value"] != "2.0":
                 issues.append(f"Schema version mismatch: {ver['value'] if ver else 'unknown'}")
+
+            # P2-5: PRAGMA integrity_check (fast)
+            try:
+                integ = conn.execute("PRAGMA integrity_check").fetchone()[0]
+                if integ != "ok":
+                    issues.append(f"DB integrity: {integ}")
+            except Exception as e:
+                issues.append(f"DB integrity check failed: {e}")
+
+            # P2-5: Lexicon version mismatch
+            try:
+                lrow = conn.execute("SELECT value FROM schema_meta WHERE key='lexicon_version'").fetchone()
+                stored_lv = int(lrow["value"]) if lrow and lrow["value"] else 0
+                if stored_lv != SHARED_LEXICON_VERSION:
+                    issues.append(f"Lexicon stale (stored {stored_lv} != code {SHARED_LEXICON_VERSION}): rebuild_vector_index needed")
+            except Exception:
+                pass
+
+            # P2-5: Freelist bloat
+            try:
+                page_count = conn.execute("PRAGMA page_count").fetchone()[0]
+                freelist = conn.execute("PRAGMA freelist_count").fetchone()[0]
+                pct = (freelist / page_count * 100) if page_count else 0
+                needs_vac = freelist > 50 and pct > 15
+                if needs_vac:
+                    issues.append(f"Freelist {pct:.1f}% ({freelist} pages): VACUUM recommended")
+            except Exception:
+                pass
         return issues or ["No issues found"]
 
 
@@ -2475,6 +2813,54 @@ class _AgentShard:
 # ──────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    import argparse, sys as _sys
+    parser = argparse.ArgumentParser(description="ASHA Memory v2 — headless ops (P4)")
+    parser.add_argument("--base-path", default="./demo_v2_memory", help="Memory base path")
+    parser.add_argument("--check", action="store_true", help="Health + stats + bloat check (no demo)")
+    parser.add_argument("--json", action="store_true", help="With --check, output JSON")
+    parser.add_argument("--health", action="store_true", help="Only health")
+    parser.add_argument("--stats", action="store_true", help="Only stats")
+    parser.add_argument("--bloat", action="store_true", help="Only bloat")
+    parser.add_argument("--rebuild", action="store_true", help="Rebuild vector index then check")
+    parser.add_argument("--vacuum", action="store_true", help="VACUUM then check")
+    args, _ = parser.parse_known_args()
+    # Headless check mode P4
+    if args.check or args.health or args.stats or args.bloat or args.rebuild or args.vacuum:
+        mem = AshaMemory(base_path=args.base_path)
+        if args.rebuild:
+            print("Rebuilding vector index...")
+            mem.rebuild_vector_index()
+        if args.vacuum:
+            print(f"VACUUM: {mem.vacuum()}")
+        health = mem.health()
+        stats = mem.stats()
+        bloat = mem.get_bloat_info() if hasattr(mem, "get_bloat_info") else {}
+        profile = mem.profile()
+        if args.json:
+            out = {}
+            if not (args.health or args.stats or args.bloat):
+                out = {"health": health, "stats": stats, "bloat": bloat, "profile": profile}
+            else:
+                if args.health: out["health"] = health
+                if args.stats: out["stats"] = stats
+                if args.bloat: out["bloat"] = bloat
+                if not out:
+                    out = {"health": health, "stats": stats, "bloat": bloat}
+            print(json.dumps(out, indent=2))
+        else:
+            if not (args.stats or args.bloat) or args.health or args.check:
+                print("Health:", health)
+            if not (args.health or args.bloat) or args.stats or args.check:
+                print(f"Stats: {json.dumps(stats, indent=2)}")
+            if not (args.health or args.stats) or args.bloat or args.check:
+                print(f"Bloat: {json.dumps(bloat, indent=2)}")
+            if args.check:
+                print(f"Profile: {json.dumps(profile, indent=2)}")
+                # exit code 0 if healthy, 1 if issues
+                has_issues = not (len(health)==1 and health[0]=="No issues found")
+                _sys.exit(1 if has_issues else 0)
+        _sys.exit(0)
+
     print("ASHA_MEMORY_SYSTEM v2.0")
     print("=" * 50)
 

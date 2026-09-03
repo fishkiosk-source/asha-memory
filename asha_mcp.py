@@ -137,13 +137,14 @@ class ToolRegistry:
             ),
             _tool_def(
                 "recall",
-                "Retrieve memories from core. Response includes top-level clock (today's date/time) and per-node age (added / last checked).",
+                "Retrieve memories from core. Response includes top-level clock (today's date/time) and per-node age (added / last checked). Optional node_type filters results post-retrieval (PERSON|FACT|PREFERENCE|EVENT|TOPIC|AFFECT|BOUNDARY|SKILL|AGENT_NOTE|CORE_REF).",
                 {
                     "query": _str_schema("Search text, node label, or node_id"),
                     "mode": _str_schema("RELATED|WHO_IS|WHAT_ABOUT|SEMANTIC|PATH|CLUSTER|TIMELINE|RECENT|PRUNE"),
                     "limit": _int_schema("Max results (alias for bound, default 10)"),
                     "bound": _int_schema("Max results (default 10)"),
                     "include_agent_notes": _bool_schema("Include raw agent notes (default false)"),
+                    "node_type": _str_schema("Optional post-filter: PERSON|FACT|PREFERENCE|EVENT|TOPIC|AFFECT|BOUNDARY|SKILL|AGENT_NOTE|CORE_REF"),
                 },
                 required=["query"],
             ),

@@ -20,15 +20,16 @@ from brain_engine import BrainEngine
 JOB_ORDER = {
     "dedup": 1,
     "compact": 2,
-    "age_prune": 3,
-    "tiers": 4,
-    "contradictions": 5,
-    "graduation": 6,
-    "discover": 7,
-    "vacuum": 8,
+    "agent_working": 3,
+    "age_prune": 4,
+    "tiers": 5,
+    "contradictions": 6,
+    "graduation": 7,
+    "discover": 8,
+    "vacuum": 9,
 }
-DEFAULT_JOB_TYPES = ["dedup", "compact", "age_prune", "tiers", "contradictions", "discover"]
-MUTATING_JOBS = {"dedup", "compact", "age_prune", "tiers", "graduation"}
+DEFAULT_JOB_TYPES = ["dedup", "compact", "agent_working", "age_prune", "tiers", "contradictions", "discover"]
+MUTATING_JOBS = {"dedup", "compact", "age_prune", "tiers", "graduation", "agent_working"}
 
 
 class BrainScheduler:
@@ -129,6 +130,9 @@ class BrainScheduler:
             keep = self.engine.config.get("ephemeral_keep_last", 3)
             max_age = self.engine.config.get("ephemeral_max_age_days", 7)
             _run("compact", "compact_ephemeral", lambda: self.engine.compact_ephemeral_logs(keep_last=keep, max_age_days=max_age, auto_snapshot=False))
+
+        if "agent_working" in job_types:
+            _run("agent_working", "regulate_agent_working", lambda: self.engine.regulate_agent_working_memory(auto_snapshot=False))
 
         if "age_prune" in job_types:
             max_days = self.engine.config.get("max_unused_days", 4)

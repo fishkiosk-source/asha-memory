@@ -3,10 +3,9 @@
 > **Status note:** this document is the v2 design record. Most items below are
 > implemented in `asha_memory_v2.py`, but a few planned extras are **not**:
 > optional local ONNX vectors, middleware hooks (Pluggable principle),
-> `remember_many()` batch insert, incremental document-frequency counters
-> (the vectorizer is rebuilt on demand from all nodes), agent-shard merging,
+> incremental document-frequency counters (the vectorizer is rebuilt on demand from all nodes — see §8), agent-shard merging,
 > and cluster auto-summarization (later removed as graph pollution — see
-> `brain/README.md`).
+> `brain/README.md`). `remember_many()` batch insert **is implemented** (`asha_memory_v2.py:1198`, single transaction + single vectorizer rebuild) — see §8.
 
 ## Guiding Principles (preserved from v1)
 
@@ -57,15 +56,15 @@ nodes with high stopword overlap, misses semantically similar nodes with differe
 0.50 link) but on vector similarity, not word-set Jaccard. Catches "graph beats vector"
 ≈ "graph outperforms vector search" — 80%+ TF-IDF cosine.
 
-### 3. Contradiction: Regex → Sentiment-Weighted
+### 3. Contradiction: Regex → Sentiment-Weighted (filtered)
 
 **v1 problem:** Only catches direct negation patterns (`not`, `hates` vs `likes`) and
 hardcoded antonym pairs. Misses "I prefer X" vs "X doesn't work for me" — same topic,
-opposite stance, no trigger words.
+opposite stance, no trigger words. Also false-positives on `it,is,and` stopwords.
 
 **v2 approach:** Score each FACT on a positive/negative sentiment axis using a curated
 word list (no ML). When two FACTS on the same topic have opposite sentiment polarity
-and high keyword overlap, flag as contradiction. Sentiment polarity is stored as a
+and **meaningful overlap ≥2** (`len>3` and not in `STOPWORDS` `shared_lexicon.py:56` — filters `it,is,and`) flag as contradiction (`asha_memory_v2._detect_contradiction_v2:354`, `brain_engine.detect_contradictions:1546`). Sentiment polarity is stored as a
 node attribute for future queries.
 
 **v2 approach — Pattern Expansion:** Match structural patterns beyond negation:
@@ -85,13 +84,13 @@ v2: nodes → working → short-term → long-term → archive
 
 | Layer | Duration | Decay | Access boost | Capacity |
 |-------|----------|-------|-------------|----------|
-| Working | Session | None | N/A | 20 nodes |
+| Working | Session | None | N/A | 20 nodes (agent cap 12, janitor `Score=acc*Wa+imp*Wi-ageH*Wd` → `short_term` when `≥12` or `age≥48h`, core untouched) |
 | Short-term | Days | 0.97/day | 0.10/access | 500 nodes |
 | Long-term | Months | 0.995/day | 0.05/access | 5000 nodes |
 | Archive | Forever | None | N/A | Unlimited |
 
-Nodes promote to longer-term layers on repeated access. This keeps frequently
-relevant info fresh without manual importance tuning.
+Nodes promote to longer-term layers on repeated access. Agent `WORKING` overflow is scope-aware (`AshaMemory._update_layer_on_access:971` per-scope evict; `brain_engine.regulate_agent_working_memory:1117` + Observer `days_left` `GET /api/agent_working_preview`). This keeps frequently
+relevant info fresh without manual importance tuning and prevents agent scratchpad bloat.
 
 ### 5. Retrieval Modes: Extend with Semantic + Path
 
@@ -114,12 +113,11 @@ or agent-to-agent queries.
 
 **v2 adds:**
 - **CORE cross-query:** `find_across_agents(topic, min_confidence)` explicitly
-  searches attention-scoped agent notes in the shared graph. Normal core recall
-  remains free of raw agent work.
+  searches attention-scoped agent notes in the shared graph (`core.db` `core_shared` mode). Normal core recall
+  remains free of raw agent work (boundary `BrainEngine.is_agent_note:176` mirrors `AshaMemory._is_core_visible`).
 - **Agent-to-agent ref:** Agent can write `REFERS_TO(agent_id, node_id)` — a reference
   to another agent's finding. CORE resolves and links.
-- **Agent merge:** If two agents worked on same topic, CORE can merge their shards
-  (dedup by content checksum).
+- **Agent merge:** *Not implemented* — remains in `legacy_shards` planning only; `core_shared` is canonical (`asha_memory_v2.py:78`). Would be dedup by content checksum if built.
 
 ### 7. Query DSL: Programmatic Memory Access
 
@@ -143,12 +141,12 @@ the same `RecallResult` type.
 **v1:** Keyword index rebuilt on every node insert via INSERT OR REPLACE.
 Full table scan for consolidation.
 
-**v2:**
-- **Incremental TF-IDF index:** Maintain document frequency counters. On insert,
-  update counters and add node vector. No full rebuild until corpus grows >20%.
-- **Query result cache:** LRU cache for recent recall() results (configurable size,
-  default 50). Bumps access counts on hit. Invalidated on relevant node write.
-- **Batch insert:** `remember_many([...])` — single transaction for bulk loading.
+**v2 (implemented):**
+- **TF-IDF index:** `remember` invalidates vectorizer and defers `fit` until next `SEMANTIC` (lazy `vector_index_auto_rebuild:True`) or single rebuild via `remember_many` (P1-3). Full incremental DF counters are *deferred* — current implementation rebuilds on demand from all nodes (`_load_vectorizer` full `SELECT content,label FROM nodes` + `fit`). Planned incremental counters would update DF on insert and rebuild only after >20% growth.
+- **Stored magnitude reuse:** `TfidfVectorizer.cosine_similarity(mag_a, mag_b)` reuses `node_vectors.magnitude` (P1-1) instead of recomputing `sqrt(sum(v²))`; `SEMANTIC` pre-filters via `node_index` overlap (`HAVING COUNT(*)>=1`) to O(k) candidates.
+- **Consolidation bucketing:** `consolidate`/`deduplicate` bucket by `checksum[:4]` + `node_index` overlap>=2, cap 150 per bucket, only when `len>200` (P1-2 `consolidation_bucket_prefix:4`/`overlap:2` tunable).
+- **Query result cache:** LRU cache for recent recall() results (configurable size, default 50, normalized key `lower()` + whitespace collapse except `PATH`). Bumps access counts on hit (split read/write transaction, P1-4). Invalidated on relevant node write.
+- **Batch insert:** `remember_many([...])` `asha_memory_v2.py:1198` — single transaction for bulk loading (implemented, not planned).
 
 ### 9. Serialization: Export/Import with Schema Migration
 
@@ -174,9 +172,9 @@ Full table scan for consolidation.
 
 ## What Stays the Same
 
-- Node types + edge types schema (backward compatible)
-- Bounded retrieval (hard caps preserved, configurable)
-- Agent shard isolation model
+- Node types + edge types schema (backward compatible) — `GraphML` now `edgedefault="directed"` (`asha_memory_v2.py:2501`, P0-2)
+- Bounded retrieval (hard caps preserved, configurable) — `agent_max_notes:100` enforced (P0-6), FTS sanitized (P0-7)
+- Agent shard isolation model — `PRAGMA foreign_keys=ON` enforced (`asha_memory_v2.py:647`, P0-1), ephemeral allowlist unified 10 labels (`shared_lexicon.py:86`, P0-3)
 - Deterministic (no randomness, reproducible queries)
 - Stdlib-first philosophy (TF-IDF, cosine, graph traversal all pure Python)
 

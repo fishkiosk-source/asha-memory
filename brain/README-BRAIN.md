@@ -13,9 +13,9 @@ dependencies, no AI calls.
 ┌──────────────────────────────────────────────────────────┐
 │                  HUMAN DASHBOARD                         │
 │  brain_dashboard.py — dark manager-style web UI          │
-│  Tabs: Overview | Maintenance | Graduate | Contradicts   │
-│        Ephemeral | Graph | Manager | System |            │
-│        Statistics | Config                               │
+│  Tabs: Overview | Maintenance | Graduate | Observer |     │
+│        Contradicts | Ephemeral | Graph | Manager |       │
+│        System | Statistics | Config                      │
 │  - target DB switcher, live DB push to Graph/Manager     │
 │  - scheduler control, health + bloat, full statistics    │
 └───────────────────────────┬──────────────────────────────┘
@@ -132,7 +132,7 @@ Memory layers: `working → short_term → long_term → archive`.
 ### `detect_contradictions()` — Conflict Detection (Scored Curation)
 
 - Scans core `FACT` / `PREFERENCE` / `TOPIC` / `AFFECT` nodes for opposing
-  sentiment on shared subjects (`overlap ≥2` words) and creates weighted `CONTRADICTS` edges (weight −0.8).
+  sentiment on shared subjects (`meaningful overlap ≥2` words, `len>3` and not in `STOPWORDS` `shared_lexicon.py:56` — filters `it,is,and` noise) and creates weighted `CONTRADICTS` edges (weight −0.8). Also checked in `asha_memory_v2._detect_contradiction_v2:354` (same filter, `shared` filtered to `len>3` + not stopword, `≥2` required).
 - Scoring: `confidence = 0.25 + overlap*0.15 + sentiment_gap*0.12 + importance_avg*0.1` (capped 0.98). Stored in `edges.metadata` as `{confidence, overlap_words, overlap_count, pos_a/neg_a/pos_b/neg_b, importance_avg, status}`.
 - **Curation, not bulk delete:** `status` is `pending` (default, high-value or `confidence≥0.55`) or `ignored` (low-confidence + low importance). All edges are `pending` by default; legacy edges without status count as `pending`. Dashboard `Contradicts` tab curates via `get_contradictions()` / `update_contradiction_status()` / `resolve_contradiction()` (`delete`, `keep_from`, `keep_to`, `merge`).
 - **Opt-in auto-resolve:** `auto_resolve_low_trust()` — if `contradiction_auto_resolve=true`, pending edges where one side `trust < low (0.3)` and other `trust > high (0.8)` are suggested as `keep high-trust` one-click; `GET /api/contradictions` returns `suggested_action` / `auto_resolvable`. Trigger via `POST /api/contradiction_auto_resolve {dry_run:false}` (caps 20/ run, rebuilds vectors if needed).
@@ -144,11 +144,15 @@ Memory layers: `working → short_term → long_term → archive`.
   `source = 'CORE'`, `trust_level = 0.95`, `attention_state = 'core_verified'`
   (node id and graph links are preserved).
 - Applies to `review_ready` notes, or notes with `trust >= 0.7` and
-  `importance >= 0.6`.
+  `importance >= 0.6`. **Explicit per-node:** `POST /api/graduate {node_ids:[...]}` / `graduate_agent_notes(node_ids=[...])` graduates exactly those IDs (bypasses trust/importance, still respects `is_agent_note` and `review_ready` protection) — dashboard `Graduate` tab supports tick-one / `Graduate Selected` / `Graduate` per row + bulk `Graduate All Graduable`. `graduate_single_note(node_id)` convenience.
 - **Design decision:** graduation is deliberately **NOT part of routine
   maintenance**. Promoting agent work into core memory is a decision for the
   human (or the main core) — it never runs in scheduled/full maintenance, only
   when triggered explicitly (dashboard `Graduate` tab or `job_types=["graduation"]`).
+
+### `regulate_agent_working_memory()` — Agent WORKING Janitor (agent-only, core untouched)
+
+- Deterministic `Score = acc*Wa + imp*Wi - ageH*Wd` (`Wa:1.5 Wi:4.0 Wd:0.15` tunable `brain_config.json`, `config tab`) demotes low-score agent `WORKING` notes to `short_term` (preserves `node_id`/edges). Triggered when `agent_working >= high_water:12/20` or any `ageH >= max_age_hours:48`. Batch `demote_batch:5`, `review_ready` never touched. Core `WORKING` untouched (`is_agent_note` guard, scope-aware `AshaMemory._update_layer_on_access:971` evicts per-scope). Result `demoted/demoted_ids`. Preview via `get_agent_working_preview()` (score/days_left/hours_left/action `demote_next/stale_soon/keep/protected`) shown in dashboard `Observer` tab (`GET /api/agent_working_preview`, `POST /api/regulate_agent_working {dry_run}`).
 
 ### `discover_links()` — Semantic Link Discovery ("Serendipity")
 
@@ -159,8 +163,8 @@ Memory layers: `working → short_term → long_term → archive`.
 
 ### `compact_ephemeral_logs()` — Telemetry Compaction
 
-- Caps append-only logs for `ephemeral_labels` (default 7 labels): keeps last `ephemeral_keep_last` (3) per label and `ephemeral_max_age_days` (7) TTL, removes stale `CONTRADICTS` between ephemerals. Edges removed with nodes, orphans purged.
-- Allowlist is editable live via `add_ephemeral_label()` / `remove_ephemeral_label()` or dashboard `Ephemeral` tab. Auto-detect suggests candidates via `discover_ephemeral_candidates(min_count=3)` (heuristics: high freq, JSON shape, low importance, few edges, `UPPER_SNAKE`).
+- Caps append-only logs for `ephemeral_labels` (default **10** labels `shared_lexicon.py:86`: `FEED_SNAPSHOT`, `RUNTIME_SAMPLE`, `TIME_ENTRY`, `DAILY_STATE`, `CRON_SUPERVISOR_REPORT`, `BRAIN_MAINTENANCE_REPORT`, `BRAIN_HISTORY`, `SCOUT_WRAPPER_TOP_STORIES`, `HN_SCOUT_TOP3`, `HN_SCOUT`): keeps last `ephemeral_keep_last` (3) per label and `ephemeral_max_age_days` (7) TTL, removes stale `CONTRADICTS` between ephemerals. Edges removed with nodes, orphans purged. Allowlist unified with core `config.json` `ephemeral_labels` (P0-3) — edits sync to both.
+- Allowlist is editable live via `add_ephemeral_label()` / `remove_ephemeral_label()` or dashboard `Ephemeral` tab. Auto-detect suggests candidates via `discover_ephemeral_candidates(min_count=3)` (heuristics: high freq, JSON shape via unified `_looks_like_json_log` `shared_lexicon.py:128` (`[:400]` + `timestamp && (post_count|load1m|status)`), low importance, few edges, `UPPER_SNAKE`).
 
 ### `vacuum_db()` — Freelist Reclaim
 
@@ -216,21 +220,22 @@ Clean manager-style UI (`#0d0d0d`/`#1a1a1a`, no emojis):
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Overview**    | `Target DB` switcher + `Health & Bloat` + recent history                                                                                                                                                                                           |
 | **Maintenance** | dedup / prune / tiers / contradictions / discover / `Run FULL` + `Compact Ephemeral` / `VACUUM` (freelist % hint)                                                                                                                                  |
-| **Graduate**    | own tab, stats `total/review_ready/graduable/private`, preview table, `Graduate Now` (manual only)                                                                                                                                                 |
-| **Contradicts** | pending/confirmed/ignored filter, confidence/overlap/trust, `Confirm`/`Ignore`/`Delete`/`Keep From`/`Keep To`/`Merge`, `Preview Auto-resolve` + `Auto-resolve low-trust` (opt-in trust gap)                                                        |
+| **Graduate**    | per-node + bulk: stats `total/review_ready/graduable/private`, checkboxes `Graduate Selected`/`Graduate` per row, `Graduate All Graduable` (explicit `node_ids` bypasses trust/imp)                                                       |
+| **Observer**    | agent-only `WORKING` janitor: `Score=acc*Wa+imp*Wi-ageH*Wd`, `Days left` `(max_age-ageH)/24`, `demote_next/stale_soon/keep/protected (review_ready)`, `Preview`/`Regulate Now` (`dry_run`), `agent_working/high_water`                       |
+| **Contradicts** | pending/confirmed/ignored filter, confidence/overlap (filtered `len>3` + stopword) + trust, `Confirm`/`Ignore`/`Delete`/`Keep From`/`Keep To`/`Merge`, `Preview Auto-resolve` + `Auto-resolve low-trust` (opt-in trust gap)                            |
 | **Ephemeral**   | allowlist chips + `Scan Candidates` (score/reason) → `Add`                                                                                                                                                                                         |
 | **Graph**       | embedded `humantools/asha_graph.html?embedded=1`, `Load Active DB` via `postMessage` + `/api/db_bytes`, respects `ephemeral_labels` from `/api/config`                                                                                             |
 | **Manager**     | embedded `humantools/asha_manager.html?embedded=1`, same live DB push, ephemeral bloat uses config                                                                                                                                                 |
 | **System**      | snapshots & rollback + audit logs (viewer) + execution history                                                                                                                                                                                     |
 | **Statistics**  | full `get_full_statistics()`: nodes/edges, core/agent, trust/imp avg, bloat freelist, node/edge/layer/source breakdowns, top labels                                                                                                                |
-| **Config**      | interval/max_days/similarity/prune floor/keep_last/max_age + `Vacuum Freelist %` + `Vacuum Min Pages` + `Contra Low/High Trust` + toggles `auto_snapshot`/`auto_rebuild`/`vacuum_after_prune`/`contradiction_auto_resolve` + `Check & Auto-VACUUM` |
+| **Config**      | interval/max_days/similarity/prune floor/keep_last/max_age + `Vacuum Freelist %/Min Pages` + `Contra Low/High` + `Agent High-water/Demote batch/Max age/Wa/Wi/Wd` + toggles `auto_snapshot`/`auto_rebuild`/`vacuum_after_prune`/`contradiction_auto_resolve`/`agent_working_regulator_enabled` + `Check & Auto-VACUUM` |
 
 Stats bar always visible: `Nodes | Core/Agent | Edges | DB Size | Snapshots | Bloat`.
 
 Manager/Graph embedded via `iframe` + `window.postMessage({type:'asha-load-db', buffer})` and `asha-config-update` for live allowlist sync — no download needed, respects server allowlist.
 
 > Note: the dashboard binds to all interfaces (`0.0.0.0`) per PLAN.md, so it is
-> reachable on the local network — keep it on a trusted network.
+> reachable on the local network — keep it on a trusted network. `dashboard_token` (`brain_config.json`, `brain_engine.py:48`) gates non-local binds via `X-Api-Token` header / `?token=` query (`brain_dashboard.py:35` `_check_auth`); `127.0.0.1` bypasses token. Use `--bind 127.0.0.1` for local-only (P2-4).
 
 ---
 
@@ -241,20 +246,18 @@ python scheduler.py                  # manual test run (dedup + tiers)
 ```
 
 - `run_job_now()` — runs the default job set:
-  `dedup, compact, age_prune, tiers, contradictions, discover`
+  `dedup, compact, agent_working, age_prune, tiers, contradictions, discover`
   (`graduation` is intentionally excluded).
 - **Canonical order is enforced** regardless of input order:
-  `dedup → compact → age_prune → tiers → contradictions → graduation → discover`.
+  `dedup → compact → agent_working → age_prune → tiers → contradictions → graduation → discover`.
   Mutating jobs run first; **link discovery runs LAST** so it never creates
-  edges towards nodes that pruning would delete.
+  edges towards nodes that pruning would delete. `agent_working` (`brain_engine.py:1117`) demotes low-score agent `WORKING→short_term` (core untouched) — see above.
 - **End-of-job orphan sweep** — after every job, `purge_orphans()` removes
   dangling edges and orphaned `node_vectors` / `memory_layers` / `access_log` /
-  `node_index` rows left by that job's mutations (FK cascades are not
-  enforced, so the brain must clean up after itself).
+  `node_index` rows left by that job's mutations. `PRAGMA foreign_keys=ON` is now enforced (`AshaMemory._core_conn:647`, `BrainEngine._connect_db:140`), so this is a safety net (previously required because FK cascades were not enforced).
 - **Vector index rebuild** — after any mutating run (dedup / compact / age prune /
   tiers / graduation / resolve merge) the TF-IDF vectors are rebuilt via
-  `AshaMemory.rebuild_vector_index()` (stored vectors go stale when the brain
-  merges/prunes content directly). Controlled by `auto_rebuild_vectors`
+  `AshaMemory.rebuild_vector_index_for_path(db_path)` static helper (`asha_memory_v2.py:822`, P2-6, no config side-effect, `busy_timeout=5000`) or `BrainEngine.rebuild_vectors()` (`brain/brain_engine.py:1094`, schedules outside jobs to avoid lock contention). Controlled by `auto_rebuild_vectors`
   (default `true`); can be triggered manually from the dashboard.
 - **Auto VACUUM** — after mutating jobs, if `freelist > vacuum_freelist_min_pages` and `freelist_pct > vacuum_freelist_threshold_pct`, `vacuum_db()` runs automatically.
 - `start(interval_minutes=N)` — background daemon thread running the default
@@ -272,10 +275,11 @@ python scheduler.py                  # manual test run (dedup + tiers)
   "interval_minutes": 60,
   "auto_snapshot_before_jobs": true,
   "dedup_similarity_threshold": 0.85,
-  "prune_importance_floor": 0.05,
+  "prune_importance_floor": 0.05, // alias of core prune_threshold (P2-2, kept in sync)
   "auto_rebuild_vectors": true,
   "max_unused_days": 4,
-  "ephemeral_labels": ["FEED_SNAPSHOT","RUNTIME_SAMPLE","TIME_ENTRY","DAILY_STATE","CRON_SUPERVISOR_REPORT","BRAIN_MAINTENANCE_REPORT","BRAIN_HISTORY"],
+  "sqlite_cache_size": -64000, // P1-1 configurable
+  "ephemeral_labels": ["BRAIN_HISTORY","BRAIN_MAINTENANCE_REPORT","CRON_SUPERVISOR_REPORT","DAILY_STATE","FEED_SNAPSHOT","HN_SCOUT","HN_SCOUT_TOP3","RUNTIME_SAMPLE","SCOUT_WRAPPER_TOP_STORIES","TIME_ENTRY"],
   "ephemeral_keep_last": 3,
   "ephemeral_max_age_days": 7,
   "ephemeral_min_importance": 0.6,
@@ -284,7 +288,14 @@ python scheduler.py                  # manual test run (dedup + tiers)
   "vacuum_freelist_min_pages": 50,
   "contradiction_auto_resolve": false,
   "contradiction_low_trust": 0.3,
-  "contradiction_high_trust": 0.8
+  "contradiction_high_trust": 0.8,
+  "agent_working_regulator_enabled": true,
+  "agent_working_high_water": 12,
+  "agent_working_demote_batch": 5,
+  "agent_working_max_age_hours": 48,
+  "agent_working_weight_access": 1.5,
+  "agent_working_weight_importance": 4.0,
+  "agent_working_weight_age": 0.15
 }
 ```
 
@@ -300,7 +311,7 @@ python scheduler.py                  # manual test run (dedup + tiers)
 
 - **`access_count` = usage frequency**. Incremented on recall. Together with `importance` decides promotion (`≥3` or `≥0.8`) and prune (`<3` and `<0.05` and `edges==0` in `short_term`).
 
-- **`ephemeral`** = high-freq telemetry, not knowledge (`brain/brain_engine.py:37` allowlist). Content is JSON (`{"timestamp":..., "post_count":...}`) and `label` is `UPPER_SNAKE`. Keep `importance <0.5`, `edges=0` — brain caps to `keep_last`/`max_age_days` and never links it.
+- **`ephemeral`** = high-freq telemetry, not knowledge (`shared_lexicon.py:86` canonical 10 labels, `brain/brain_engine.py:27` + `config.json` `ephemeral_labels`). Unified `_looks_like_json_log` `shared_lexicon.py:128` (`[:400]` + `timestamp && (post_count|load1m|status)`). Content is JSON (`{"timestamp":..., "post_count":...}`) and `label` is `UPPER_SNAKE`. Keep `importance <0.5`, `edges=0` — brain caps to `keep_last`/`max_age_days` and never links it (auto-link / contradictions excluded).
 
 - **Contradictions:** `confidence 0.0–1.0` in `edges.metadata` (`overlap*0.15 + sentiment_gap*0.12 + importance*0.1`). `pending` = needs review, `ignored` = low confidence auto-filtered. Confirm/ignore via dashboard; `merge`/`keep_*` deletes loser node.
 
@@ -331,7 +342,7 @@ NOTE: If used through MCP .db folder will be asha_mcp_data near asha_memory
 
 `GET /api/status` → `{health,bloat,scheduler,databases,snapshots,history,logs}`
 `GET /api/config` + `POST /api/config` / `POST /api/config_reset`
-`GET /api/bloat`, `GET /api/statistics` (`get_full_statistics`), `GET /api/ephemeral_candidates`, `POST /api/ephemeral_allowlist {action:add|remove,label}`, `GET /api/contradictions?status=&limit=`, `POST /api/contradiction_action {edge_id,action:confirm|ignore|delete|keep_from|keep_to|merge}`, `POST /api/contradiction_auto_resolve {dry_run}`, `POST /api/check_vacuum`, `GET /api/graduate_preview`, `POST /api/graduate`, `POST /api/compact_ephemeral`, `POST /api/vacuum`, `GET /api/db_bytes`, `GET /humantools/*`
+`GET /api/bloat`, `GET /api/statistics` (`get_full_statistics`), `GET /api/ephemeral_candidates`, `POST /api/ephemeral_allowlist {action:add|remove,label}`, `GET /api/contradictions?status=&limit=`, `POST /api/contradiction_action {edge_id,action:confirm|ignore|delete|keep_from|keep_to|merge}`, `POST /api/contradiction_auto_resolve {dry_run}`, `POST /api/check_vacuum`, `GET /api/graduate_preview`, `POST /api/graduate {node_ids?}`, `GET /api/agent_working_preview`, `POST /api/regulate_agent_working {dry_run}`, `POST /api/compact_ephemeral`, `POST /api/vacuum`, `POST /api/manager_commit` (binary SQLite upload), `GET /api/db_bytes`, `GET /api/health` (+ `/_static/` for `brain/static/dashboard.html` fallback inline `brain_dashboard.py:79`), `GET /humantools/*`
 
 ---
 
@@ -343,8 +354,9 @@ NOTE: If used through MCP .db folder will be asha_mcp_data near asha_memory
 | -------------------- | ----------------------------------------------- |
 | `brain_engine.py`    | Maintenance engine (all jobs, metrics, reports) |
 | `scheduler.py`       | Background interval runner + job history        |
-| `brain_dashboard.py` | Human web dashboard (pure http.server)          |
-| `brain_config.json`  | Persistent configuration                        |
+| `brain_dashboard.py` | Human web dashboard (pure http.server, `/_static/` serve, token auth) |
+| `static/dashboard.html` | Dashboard UI (extracted from `brain_dashboard.py:553`, fallback inline) |
+| `brain_config.json`  | Persistent configuration (`sqlite_cache_size`, `dashboard_token`, 10-label allowlist) |
 | `job_history.json`   | Run history (last 100 entries)                  |
 | `logs/`              | Dated markdown audit reports                    |
 | `snapshots/`         | Safety backups + rollback source                |

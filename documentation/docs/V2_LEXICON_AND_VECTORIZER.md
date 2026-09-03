@@ -1,19 +1,19 @@
 # Lexicon, Tokenizer & Vectorizer Stability Plan
 
 > [!NOTE]
-> **Status**: Fully Implemented (`LEXICON_VERSION = 3`). The shared tokenizer, stemmer removal, version-gated vectorizer, and 2-letter stopword filtering are active in `asha_memory_v2.py`.
+> **Status**: Fully Implemented (`LEXICON_VERSION = 3` `shared_lexicon.py:61`, re-exported `asha_memory_v2.py:121`). The shared tokenizer (`shared_lexicon.py:23` `_TOKEN_PATTERN` `shared_lexicon.py:21`), stemmer removal, version-gated vectorizer (`asha_memory_v2.py:594` `_vectorizer_data`/`_version` + `_invalidate_vectorizer`), and 2-letter stopword filtering (`shared_lexicon.py:56` deduped) are active. Canonical `DEFAULT_EPHEMERAL_LABELS` 10 labels `shared_lexicon.py:86` + unified `_looks_like_json_log` `shared_lexicon.py:128`.
 
 Three issues identified. Plan below addresses each.
 
 ## Issue 1 — Tokenizer rejects usernames, contractions, non-English
 
-**Root**: `\b[a-zA-Z]{3,}\b` used in four places:
-| Location | Line | Used by |
+**Root** (historical — now fixed via `shared_lexicon.py`): `\b[a-zA-Z]{3,}\b` was used in four places (old `asha_memory_v2.py:176/342/351/362`):
+| Location (now) | Line | Used by |
 |----------|------|---------|
-| `TfidfVectorizer._tokenize` | 176 | TF-IDF fit/transform |
-| `_extract_keywords` | 342 | node_index keyword extraction |
-| `_jaccard_similarity` | 351 | consolidation / contradiction |
-| `_sentiment_score` | 362 | contradiction detection |
+| `shared_lexicon._tokenize` / `TfidfVectorizer._tokenize` | `shared_lexicon.py:23` / `asha_memory_v2.py:206` | TF-IDF fit/transform |
+| `shared_lexicon._extract_keywords` | `shared_lexicon.py:99` | node_index keyword extraction |
+| `shared_lexicon._jaccard_similarity` | `shared_lexicon.py:107` | consolidation / contradiction |
+| `shared_lexicon._sentiment_score` | `shared_lexicon.py:117` | contradiction detection |
 
 **What breaks**:
 - `@user123`, `sam_doe` → digits/underscore/`@` dropped entirely
@@ -64,7 +64,7 @@ def _tokenize(text: str, min_len: int = 2) -> List[str]:
 
 ## Issue 2 — Naive suffix stemmer does more harm than good
 
-**Root**: `_stem_word` at line 319:
+**Root** (historical — `_stem_word` removed): `_stem_word` was at old `asha_memory_v2.py:319`:
 
 ```python
 def _stem_word(word: str) -> str:
@@ -114,11 +114,11 @@ The guard protects 6-letter words ending in 4-letter suffixes but fails for long
 
 ## Issue 3 — Vectorizer is live-mutable without synchronization
 
-**Root**: `_load_vectorizer` caches to `self._vectorizer`, but other paths set `self._vectorizer = None` to force rebuild:
+**Root** (historical — now version-gated): `_load_vectorizer` cached to `self._vectorizer`, but other paths set `self._vectorizer = None` to force rebuild:
 
 ```
-_store_node (line 945):       self._vectorizer = None
-rebuild_vector_index (line 726): self._vectorizer = None
+_old _store_node (line 945):       self._vectorizer = None  → now _invalidate_vectorizer() asha_memory_v2.py:720
+_old rebuild_vector_index (line 726): self._vectorizer = None  → now _vectorizer_data/version asha_memory_v2.py:594
 ```
 
 **Race scenario**:
@@ -248,11 +248,11 @@ Add a one-time check in `_init_core_db` that bumps an internal `lexicon_version`
 
 | Step | Change | Files | Risk |
 |------|--------|-------|------|
-| 1 | Add shared `_tokenize()` function; replace 4 regex sites | `asha_memory_v2.py` | Low — mechanical replacement |
-| 2 | Delete `_stem_word`; un-stem `_extract_keywords` return | `asha_memory_v2.py` | Low — removes code |
-| 3 | Version-gate `_load_vectorizer`; replace `self._vectorizer = None` with `_invalidate_vectorizer()` | `asha_memory_v2.py` | Medium — changes caching contract |
-| 4 | Add `lexicon_version` to `schema_meta`; auto-rebuild on mismatch | `asha_memory_v2.py` | Low — migration safety |
-| 5 | Update `_final_check.py` and re-run | `_final_check.py` | Low — test maintenance |
+| 1 | Add shared `_tokenize()` function; replace 4 regex sites | `shared_lexicon.py:23` + `asha_memory_v2.py:206` | Done |
+| 2 | Delete `_stem_word`; un-stem `_extract_keywords` return | removed (no `_stem_word` in codebase) | Done |
+| 3 | Version-gate `_load_vectorizer`; replace `self._vectorizer = None` with `_invalidate_vectorizer()` | `asha_memory_v2.py:594,720,734` | Done |
+| 4 | Add `lexicon_version` to `schema_meta`; auto-rebuild on mismatch | `asha_memory_v2.py:691` + `shared_lexicon.py:61` | Done |
+| 5 | Update `_final_check.py` and re-run | `_final_check.py` | Done |
 
 ---
 

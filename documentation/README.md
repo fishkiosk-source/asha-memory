@@ -5,20 +5,23 @@ shared graph storage and attention-scoped agent notes.
 
 ## Files
 
-| File                                | Purpose                                                 |
-| ----------------------------------- | ------------------------------------------------------- |
-| `asha_memory_v2.py`                 | Main system — single-file, importable, runnable demo    |
-| `asha_mcp.py`                       | MCP Protocol Server — stdio JSON-RPC 2.0 interface      |
-| `internal_clock.py`                 | Time context — node ages, last-checked, TODAY node      |
-| `ASHA_SKILLS_REGISTRY.txt`          | v2 skill registry — 53 skills, 8 categories             |
-| `brain/`                            | Autonomous maintenance engine + scheduler + dashboard   |
-| `documentation/README.md`           | This file                                               |
-| `documentation/GUIDE.md`            | Comprehensive AI agent usage guide                      |
-| `documentation/mcp/MCP_AI_GUIDE.md` | Complete guide for MCP client integration               |
-| `documentation/docs/`               | Architecture + design plans (V2, lexicon, clock)        |
-| `documentation/SKILLS/`             | CORESKILLS.md / AGENTSKILLS.md — AI operating guides    |
-| `humantools/asha_inspector.html`    | Standalone SQLite inspector (open any `.db` in browser) |
-| `humantools/asha_graph.html`        | Visual memory graph inspector                           |
+| File                                | Purpose                                                        |
+| ----------------------------------- | -------------------------------------------------------------- |
+| `asha_memory_v2.py`                 | Main system — importable, runnable demo (now `shared_lexicon` backed) |
+| `shared_lexicon.py`                 | **Single source** tokenizer/stopwords/sentiment/JSON-log (`LEXICON_VERSION 3`) |
+| `asha_mcp.py`                       | MCP Protocol Server — stdio JSON-RPC 2.0 interface (23 tools)  |
+| `internal_clock.py`                 | Time context — node ages, last-checked, TODAY node             |
+| `ASHA_SKILLS_REGISTRY.txt`          | v2 skill registry — 53 skills, 8 categories                    |
+| `brain/`                            | Maintenance engine + scheduler + dashboard (`brain/static/` split) |
+| `brain/static/dashboard.html`       | Dashboard UI (extracted from `brain_dashboard.py:553`, served at `/_static/` with fallback inline) |
+| `documentation/README.md`           | This file                                                      |
+| `documentation/GUIDE.md`            | Comprehensive AI agent usage guide (`recall` `node_type` filter) |
+| `documentation/mcp/MCP_AI_GUIDE.md` | Complete guide for MCP client integration                      |
+| `documentation/docs/`               | Architecture + design plans (V2, lexicon, clock)               |
+| `documentation/SKILLS/`             | CORESKILLS.md / AGENTSKILLS.md — AI operating guides            |
+| `humantools/asha_inspector.html`    | Standalone SQLite inspector (open any `.db` in browser)        |
+| `humantools/asha_graph.html`        | Visual memory graph inspector (D3, minimap, filters)           |
+| `humantools/asha_manager.html`      | Full DB manager (sql.js, bulk bar, FTS-aware)                  |
 
 ## Quick Start
 
@@ -178,7 +181,13 @@ agent_skills = mem.agent_skills("agent_01")
 
 ```python
 mem.remember(content="text", node_type="FACT", label="optional_label",
-              source="USER", trust=0.8, importance=0.6, metadata={})
+               source="USER", trust=0.8, importance=0.6, metadata={})
+
+# Batch insert — single transaction, single vectorizer rebuild (P1-3)
+ids = mem.remember_many([
+    {"content": "Fact one", "node_type": "FACT", "label": "f1"},
+    {"content": "Fact two", "node_type": "FACT", "label": "f2"},
+])
 
 mem.relate(from_id, to_id, "RELATES_TO", weight=1.0)
 ```
@@ -207,7 +216,7 @@ New agent notes are stored in `core.db` as graph-connectable `AGENT_NOTE`
 nodes. They retain `source="AGENT_<id>"`, `agent_id`, and an attention state,
 but normal `recall()` excludes them so raw worker activity cannot fill the main
 AI's context window. States are `agent_private` (default), `review_ready`, and
-`core_verified`. Set `agent_memory_mode` to `legacy_shards` only when an older
+`core_verified`. Notes are capped at `agent_max_notes=100` — oldest `agent_private` is dropped when full (P0-6). Set `agent_memory_mode` to `legacy_shards` only when an older
 per-agent database deployment must be retained.
 
 ```python
@@ -242,16 +251,18 @@ Pure-Python `TfidfVectorizer` (stdlib only). Tokenizes with a Unicode-aware patt
 
 **Shared tokenizer.** All text processing (`_tokenize`, `_extract_keywords`, `_jaccard_similarity`, `_sentiment_score`) uses the same `_tokenize()` function via a shared compiled regex. No regex duplication or drift.
 
-Vectors stored in `node_vectors` table. Version-gated cache with `_invalidate_vectorizer()` — no silent state refresh on concurrent access.
+Vectors stored in `node_vectors` table (`magnitude` reused in `cosine_similarity` — P1-1). `SEMANTIC` pre-filters candidates via `node_index` overlap before scoring (P1-1). Version-gated cache with `_invalidate_vectorizer()` — no silent state refresh on concurrent access. `recall` cache key is normalized (`lower()` + whitespace collapse) except for `PATH` mode (P1-6). Recall uses split read/write transactions to avoid WAL contention with Brain (P1-4). `GraphML` export is `edgedefault="directed"` (P0-2).
 
 ### Memory Layers
 
-| Layer        | Promotion Trigger     | Capacity |
-| ------------ | --------------------- | -------- |
-| `working`    | Default for new nodes | 20       |
-| `short_term` | After 3 accesses      | —        |
-| `long_term`  | After 15 accesses     | —        |
-| `archive`    | Manual or prune       | —        |
+| Layer        | Promotion Trigger            | Capacity | Decay    |
+| ------------ | ---------------------------- | -------- | -------- |
+| `working`    | Default for new nodes        | 20       | 1.0 (none) — agent janitor demotes low-score to `short_term` |
+| `short_term` | After 3 accesses             | 500      | 0.97/day |
+| `long_term`  | After 15 accesses            | 5000     | 0.995/day|
+| `archive`    | Manual or prune              | ∞        | 1.0 (none)|
+
+Agent `WORKING` is capped agent-only (`agent_working_high_water:12/20`, `Score=acc*Wa+imp*Wi-ageH*Wd` `brain_engine.py:1117`, `Wd0.15`, `max_age_hours:48`, core `WORKING` untouched via `is_agent_note` + scope-aware `AshaMemory._update_layer_on_access:971`). Preview `GET /api/agent_working_preview` shows `days_left`, `score`, `demote_next/stale_soon/keep/protected`.
 
 ```python
 # Access decay: weight *= decay_factor_per_day^days
@@ -300,12 +311,17 @@ mem.profile()
 #   "cache_hits": 0,
 #   "cache_misses": 3,
 #   "vector_index_freshness": "2/2 nodes indexed",
-#   "query_log_size": 3,
-#   "cache_size": 3
+#   "query_log_size": 3,  # in-memory
+#   "persistent_query_log_size": 3,  # P3-1 COUNT(*) FROM query_log
+#   "cache_size": 3,
+#   "last_vacuum": {"at": 1788360548, "saved_mb": 0.0, ...}  # P3-4
 # }
 
-mem.health()
+mem.health()  # P2-5 expanded: orphaned edges, FTS, stale vectors, schema, integrity_check, lexicon stale, freelist bloat
 # ["No issues found"] or list of warnings
+# e.g. "Lexicon stale (stored 2 != code 3): rebuild_vector_index needed"
+# e.g. "Freelist 18.2% (87 pages): VACUUM recommended"
+# e.g. "DB integrity: ok"
 
 mem.stats()
 # {
@@ -330,22 +346,30 @@ DEFAULT_CONFIG = {
     "max_content_length": 500,
     "decay_factor_per_day": 0.99,
     "access_boost": 0.05,
-    "prune_threshold": 0.05,
+    "prune_threshold": 0.05,  # alias prune_importance_floor (brain) — kept in sync
+    "prune_importance_floor": 0.05,  # P2-2 alias
     "consolidation_similarity_high": 0.85,
     "consolidation_similarity_link": 0.5,
-    "default_trust": 0.5,
-    "default_importance": 0.5,
-    "agent_max_notes": 100,
+    "consolidation_bucket_prefix": 4,   # P1-2 tunable
+    "consolidation_bucket_overlap": 2,  # P1-2 tunable
+    "default_trust": 0.5,  # provenance
+    "default_importance": 0.5,  # retention
+    "agent_max_notes": 100,  # P0-6 enforced (drops oldest agent_private)
     "agent_max_content_length": 800,
-    "agent_memory_mode": "core_shared",
+    "agent_memory_mode": "core_shared",   # or "legacy_shards"
     "semantic_relevance_floor": 0.1,
     "vector_index_auto_rebuild": True,
     "cache_capacity": 50,
-    "working_memory_capacity": 20,
+    "working_memory_capacity": 20,  # global; agent WORKING capped via agent_working_high_water:12
+    "agent_working_high_water": 12,
+    "agent_working_regulator_enabled": True,
     "short_term_promote_after": 3,
     "long_term_promote_after": 15,
     "internal_clock": True,
+    "ephemeral_labels": sorted(DEFAULT_EPHEMERAL_LABELS),  # P0-3 unified (10)
+    "sqlite_cache_size": -64000,  # P1-1 configurable
 }
+# Brain: agent_working_high_water, agent_working_demote_batch:5, agent_working_max_age_hours:48, agent_working_weight_access:1.5, agent_working_weight_importance:4.0, agent_working_weight_age:0.15
 ```
 
 Override any key by placing it in `config.json` — values merge at startup.
@@ -405,18 +429,40 @@ CREATE TABLE memory_layers (
     CHECK (layer IN ('working','short_term','long_term','archive'))
 );
 
--- v2: Query log
+-- v2: Query log (P3-1 persisted, P3-4 last_vacuum in config)
 CREATE TABLE query_log (
     log_id INTEGER PRIMARY KEY AUTOINCREMENT, query_text TEXT NOT NULL,
     mode TEXT NOT NULL, result_count INTEGER NOT NULL DEFAULT 0,
     duration_ms REAL NOT NULL DEFAULT 0, cache_hit INTEGER NOT NULL DEFAULT 0,
     queried_at INTEGER NOT NULL
 );
+
+-- Triggers for FTS sync (P0-7 sanitized via _sanitize_fts_query — MATCH fallback to LIKE on OperationalError)
+CREATE TRIGGER IF NOT EXISTS nodes_ai AFTER INSERT ON nodes BEGIN
+    INSERT INTO node_fts(rowid, label, content) VALUES (new.rowid, new.label, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS nodes_ad AFTER DELETE ON nodes BEGIN
+    INSERT INTO node_fts(node_fts, rowid, label, content) VALUES ('delete', old.rowid, old.label, old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS nodes_au AFTER UPDATE ON nodes BEGIN
+    INSERT INTO node_fts(node_fts, rowid, label, content) VALUES ('delete', old.rowid, old.label, old.content);
+    INSERT INTO node_fts(rowid, label, content) VALUES (new.rowid, new.label, new.content);
+END;
+
+ -- P1-5 indexes (auto-created on _init_core_db, FK ON per AshaMemory._core_conn:647)
+CREATE INDEX IF NOT EXISTS idx_nodes_label_type ON nodes(label, node_type);
+CREATE INDEX IF NOT EXISTS idx_nodes_updated_access ON nodes(updated_at, access_count);
+CREATE INDEX IF NOT EXISTS idx_nodes_source ON nodes(source);
+CREATE INDEX IF NOT EXISTS idx_memory_layers_layer ON memory_layers(layer);
+CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_node);
+CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_node);
+-- PRAGMAs: journal_mode=WAL, foreign_keys=ON, cache_size=-64000 (configurable sqlite_cache_size)
+-- Note: busy_timeout=5000 is set only in rebuild_vector_index / rebuild_vector_index_for_path (P1-3), not in _core_conn
 ```
 
-> **Note:** the `query_log` table currently stays empty — query history is kept
-> in-memory (`profile()`'s `query_log_size`), and `_log_query()` does not insert
-> rows into it.
+> **Note:** `query_log` is persisted — `_log_query()` `asha_memory_v2.py:1340` inserts
+> rows and `profile()` `asha_memory_v2.py:2550` reports `query_log_size` from
+> both in-memory and `COUNT(*) FROM query_log` for restart persistence.
 
 ### Agent Tables (legacy per-agent shards)
 
@@ -485,12 +531,14 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"spawn_agen
 
 ## Deployment Checklist
 
-- [ ] Single Python file: `asha_memory_v2.py` (copy to target)
-- [ ] Skills registry: `ASHA_SKILLS_REGISTRY.txt` (bundled at project root; `load_skill_registry()` returns 0 when the file is absent)
-- [ ] Inspectors: `humantools/asha_inspector.html`, `humantools/asha_graph.html` (optional, for debugging)
-- [ ] Dependencies: `sqlite3`, `json`, `math`, `re`, `collections`, `pathlib` (all stdlib)
+- [ ] Core files: `asha_memory_v2.py` + `shared_lexicon.py` + `internal_clock.py` (copy together)
+- [ ] Skills registry: `ASHA_SKILLS_REGISTRY.txt` (bundled at project root; `load_skill_registry()` returns 0 when absent)
+- [ ] Inspectors: `humantools/asha_inspector.html`, `humantools/asha_graph.html`, `humantools/asha_manager.html` (optional)
+- [ ] Dashboard static: `brain/static/dashboard.html` (extracted from `brain_dashboard.py:553`, served at `/_static/` with fallback inline if missing)
+- [ ] Dependencies: `sqlite3`, `json`, `math`, `re`, `collections`, `pathlib` (all stdlib — no pip)
 - [ ] Data dir: created automatically on first `AshaMemory(base_path=<dir>)`
-- [ ] Config: auto-generated `config.json` in base_path
+- [ ] Config: auto-generated `config.json` in base_path (now includes `ephemeral_labels`, `sqlite_cache_size`, `consolidation_bucket_*`)
+- [ ] CLI check: `python asha_memory_v2.py --base-path ./data --check --json` (P4) for headless health
 
 ## Complete Example
 
