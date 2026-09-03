@@ -1,4 +1,4 @@
-[ABOUT.md](https://github.com/user-attachments/files/31701443/ABOUT.md)
+[ABOUT.md](https://github.com/user-attachments/files/31802394/ABOUT.md)
 # ASHA Memory System v2
 
 ![ASHA Memory Logo](https://github.com/fishkiosk-source/asha-memory/blob/main/documentation/logo/ASHAMEMORYLOGO128.png)
@@ -66,16 +66,18 @@ It is designed for:
 
 | Capability | Details |
 |---|---|
-| **Semantic search** | Pure-Python `TfidfVectorizer` (`asha_memory_v2.py:172`), Unicode tokenizer, smoothed IDF, cosine ranking, `semantic_relevance_floor: 0.1` |
-| **9 recall modes** | `RELATED` `WHO_IS` `WHAT_ABOUT` `RECENT` `SEMANTIC` `PATH` `CLUSTER` `TIMELINE` `PRUNE` |
-| **Tiered lifecycle** | `working (20)` -> `short_term (500)` -> `long_term (5000)` -> `archive` with decay `0.97` / `0.995` and access promotion |
+| **Semantic search** | Pure-Python `TfidfVectorizer` (`asha_memory_v2.py:171`), Unicode tokenizer `shared_lexicon.py:21` (`\b[\w']{2,}\b`), smoothed IDF, cosine `magnitude` reuse `asha_memory_v2.py:197`, `semantic_relevance_floor: 0.1` + `node_index` pre-filter |
+| **9 recall modes** | `RELATED` `WHO_IS` `WHAT_ABOUT` `RECENT` `SEMANTIC` `PATH` `CLUSTER` `TIMELINE` `PRUNE` + `remember_many` `asha_memory_v2.py:1198` batch |
+| **Tiered lifecycle** | `working (20)` -> `short_term (500)` -> `long_term (5000)` -> `archive` with decay `0.97` / `0.995`, promotion `3/15`, `agent_max_notes:100` `asha_memory_v2.py:74` enforced · agent `WORKING` janitor `Score=acc*Wa+imp*Wi-ageH*Wd` `brain_engine.py:1117` (core untouched) |
 | **Internal clock** | `internal_clock.py:32` — per-node `added / last_checked / stale`, daily `TODAY` EVENT node, no MCP changes |
-| **Agent isolation** | `AGENT_NOTE` nodes in `core.db` with `agent_private -> review_ready -> core_verified`; excluded from `recall()` unless `include_agent_notes=True` |
+| **Agent isolation** | `AGENT_NOTE` nodes in `core.db` with `agent_private -> review_ready -> core_verified`; excluded from `recall()` unless `include_agent_notes=True` · observer `GET /api/agent_working_preview` shows `days_left` |
 | **Query DSL** | `FIND PERSON "SAM" -> PREFERENCE` / `FIND SEMANTIC "..."` / `FIND PATH "A" -> "B"` |
-| **LRU cache** | `LRUCache:226` capacity 50, version-gated vectorizer invalidation |
-| **Brain engine** | `brain/brain_engine.py:82` — dedup, decay, contradictions, ephemeral compaction, vacuum — with safety snapshots |
-| **MCP 2025-03-26** | `asha_mcp.py:620` — 23 tools + 5 resources over stdio JSON-RPC 2.0 |
-| **Portable** | stdlib only: `sqlite3` `re` `json` `math` `collections` `pathlib` |
+| **LRU cache** | `LRUCache:225` capacity 50, normalized key `asha_memory_v2.py:1278`, version-gated vectorizer |
+| **Storage** | `core.db` `WAL` + `foreign_keys=ON` `asha_memory_v2.py:647` + `cache_size` `asha_memory_v2.py:91` configurable + `idx_*` `asha_memory_v2.py:500` + scope-aware `working` evict `asha_memory_v2.py:971` |
+| **Brain engine** | `brain/brain_engine.py:27` — dedup (bucketed), decay, contradictions (filtered `len>3` + stopword `shared_lexicon.py:56`), ephemeral compaction, vacuum — snapshots + `static` split + per-node graduate + agent `WORKING` regulator |
+| **MCP 2025-03-26** | `asha_mcp.py:620` — 23 tools + 5 resources over stdio JSON-RPC 2.0, `recall` `node_type` filter `asha_mcp.py:147` |
+| **Dashboard** | `brain/brain_dashboard.py:553` `0.0.0.0` token `brain/brain_dashboard.py:35` + `static/dashboard.html` split + bulk `Contradicts` + `Observer` + per-node `Graduate` |
+| **Portable** | stdlib only: `sqlite3` `re` `json` `math` `collections` `pathlib` — `shared_lexicon.py:1` single source |
 
 ---
 
@@ -83,22 +85,24 @@ It is designed for:
 
 ```
 memory/v2/
-├── asha_memory_v2.py          # Core system — importable, single-file
-├── asha_mcp.py                # MCP stdio server (23 tools, 5 resources)
+├── asha_memory_v2.py          # Core system — importable (shared_lexicon backed)
+├── shared_lexicon.py          # Single source tokenizer/stopwords/sentiment/JSON-log (LEXICON_VERSION 3)
+├── asha_mcp.py                # MCP stdio server (23 tools, 5 resources, recall node_type filter)
 ├── internal_clock.py          # Temporal context provider
 ├── ASHA_SKILLS_REGISTRY.txt   # 53 skills · 8 categories
 ├── brain/
-│   ├── brain_engine.py        # Maintenance engine
+│   ├── brain_engine.py        # Maintenance engine (FK ON, bucketed dedup, static rebuild)
 │   ├── scheduler.py           # Interval runner + canonical job order
-│   ├── brain_dashboard.py     # Web dashboard (http.server, :8500)
-│   ├── brain_config.json      # Persistent config
+│   ├── brain_dashboard.py     # Web dashboard (http.server, :8500, 0.0.0.0 token, static split)
+│   ├── static/dashboard.html  # Dashboard UI (extracted from brain_dashboard.py:553, fallback inline)
+│   ├── brain_config.json      # Persistent config (sqlite_cache_size, prune_threshold alias, dashboard_token)
 │   ├── job_history.json       # Last 100 runs
-│   ├── snapshots/             # Safety backups
+│   ├── snapshots/             # Safety backups (keep_last_snapshots:10, keep_last_logs:30)
 │   └── logs/                  # Markdown audit reports
 ├── documentation/
 │   ├── ABOUT.md               # You are here (GitHub overview)
-│   ├── README.md              # Feature reference
-│   ├── GUIDE.md               # AI agent usage guide
+│   ├── README.md              # Feature reference (Files, Config, Schema, CLI --check)
+│   ├── GUIDE.md               # AI agent usage guide (recall node_type, trust/importance)
 │   ├── docs/
 │   │   ├── V2_ARCHITECTURE.md
 │   │   ├── V2_LEXICON_AND_VECTORIZER.md
@@ -110,8 +114,8 @@ memory/v2/
 │   └── logo/
 └── humantools/
     ├── asha_inspector.html    # SQLite inspector (drag-drop .db)
-    ├── asha_graph.html        # Visual graph
-    └── asha_manager.html      # Manager UI
+    ├── asha_graph.html        # Visual graph (D3, minimap, token-aware)
+    └── asha_manager.html      # Manager UI (sql.js, token-aware)
 ```
 
 ---
@@ -123,7 +127,7 @@ memory/v2/
 ```
 Your App / Agent
       |
-      +--(Python import)--> AshaMemory (asha_memory_v2.py:627)
+      +--(Python import)--> AshaMemory (asha_memory_v2.py:575)
       |                      | remember / recall / relate / query
       |                      |
       +--(JSON-RPC stdio)--> MCP Server (asha_mcp.py:620)
@@ -154,15 +158,15 @@ Engines (inside AshaMemory):  TfidfVectorizer  |  LRUCache (50)  |  InternalCloc
 | Layer | Component | File | Purpose |
 |---|---|---|---|
 | App | Your App / Agent | — | Calls Python API or MCP stdio |
-| Runtime | AshaMemory | `asha_memory_v2.py:627` | `remember` / `recall` / `relate` / `query` |
+| Runtime | AshaMemory | `asha_memory_v2.py:575` | `remember` / `recall` / `relate` / `query` |
 | Transport | MCP Server | `asha_mcp.py:620` | 23 tools + 5 resources over stdio JSON-RPC 2.0 |
-| Storage | core.db (WAL) | `asha_memory_v2.py:466` | 7 tables + FTS5 + indexes |
-| Engine | TfidfVectorizer / LRUCache / InternalClock / DSL | `asha_memory_v2.py:172,226` `internal_clock.py:32` | Retrieval, caching, time, parsing |
+| Storage | core.db (WAL) | `asha_memory_v2.py:411` | 7 tables + FTS5 + indexes |
+| Engine | TfidfVectorizer / LRUCache / InternalClock / DSL | `asha_memory_v2.py:171,225` `internal_clock.py:32` | Retrieval, caching, time, parsing |
 | Maintenance | BrainEngine + Scheduler + Dashboard | `brain/` | Decoupled vacuum / dedup / decay |
 
 ### Storage and Schema
 
-Core DDL is `CORE_SCHEMA_V2` (`asha_memory_v2.py:466`); ephemeral telemetry labels are `EPHEMERAL_LABELS:98` (`FEED_SNAPSHOT`, `RUNTIME_SAMPLE`, and others) and are capped by the Brain, never linked by `SEMANTIC`.
+Core DDL is `CORE_SCHEMA_V2` (`asha_memory_v2.py:411`); canonical ephemeral telemetry labels are `DEFAULT_EPHEMERAL_LABELS` `shared_lexicon.py:86` (10 labels: `FEED_SNAPSHOT`, `RUNTIME_SAMPLE`, `TIME_ENTRY`, `DAILY_STATE`, `CRON_SUPERVISOR_REPORT`, `BRAIN_MAINTENANCE_REPORT`, `BRAIN_HISTORY`, `SCOUT_WRAPPER_TOP_STORIES`, `HN_SCOUT_TOP3`, `HN_SCOUT` — plus alias `EPHEMERAL_LABELS` `asha_memory_v2.py:120`) and are capped by the Brain, never linked by `SEMANTIC`.
 
 **Tables (simplified):**
 
@@ -211,16 +215,17 @@ working  --[access >= 3]-->  short_term  --[access >= 15]-->  long_term  --[manu
  cap 20                     cap 500                       cap 5000                     cap infinite
  decay 1.00                 decay 0.97                    decay 0.995                  decay 1.00
  boost 0.00                 boost 0.10                    boost 0.05                   boost 0.00
+ agent_working High-water 12/20 — Score=acc*Wa+imp*Wi-ageH*Wd, max_age 48h → short_term (agent-only)
 ```
 
 | Tier | Capacity | Decay / day | Boost / access | Promote when |
 |---|---|---|---|---|
-| `working` | 20 | 1.00 (no decay) | 0.00 | Default for new nodes |
+| `working` | 20 (agent cap 12) | 1.00 (no decay) | 0.00 | Default for new nodes · agent janitor `brain_engine.py:1117` demotes low-score when `>=12` or `age>=48h` |
 | `short_term` | 500 | 0.97 | 0.10 | `access_count >= 3` |
 | `long_term` | 5000 | 0.995 | 0.05 | `access_count >= 15` |
 | `archive` | infinite | 1.00 (no decay) | 0.00 | Manual or prune |
 
-Promotion is access-driven (`working_memory_capacity:20`, `short_term_promote_after:3`, `long_term_promote_after:15` in `DEFAULT_CONFIG:48`). Decay is exponential `importance = importance * decay ^ days` (`run_decay:1936`, `manage_tiers:804`) — `working` and `archive` never decay.
+Promotion is access-driven (`working_memory_capacity:20`, `short_term_promote_after:3`, `long_term_promote_after:15` in `DEFAULT_CONFIG:62`). Decay is exponential `importance = importance * decay ^ days` (`run_decay`, `manage_tiers`) — `working` and `archive` never decay (importance decay, not trust). Agent `WORKING` overflow is scope-aware: `AshaMemory._update_layer_on_access:971` evicts per-scope (agent fills never evicts core), dashboard `Observer` tab shows `days_left/score/demote_next` via `GET /api/agent_working_preview`.
 
 ### Recall Pipeline
 
@@ -246,18 +251,19 @@ Promotion is access-driven (`working_memory_capacity:20`, `short_term_promote_af
 
 | Step | Component | File | Notes |
 |---|---|---|---|
-| 1 | `recall()` dispatch | `asha_memory_v2.py:1133` | 9 modes |
-| 2 | `LRUCache` | `asha_memory_v2.py:226` | capacity 50, invalidated on write |
-| 3 | `SQLite` candidates | `asha_memory_v2.py:1176` | `RELATED` via `node_index`, `SEMANTIC` via `node_vectors`, etc. |
-| 4 | `TfidfVectorizer` | `asha_memory_v2.py:172` | `transform` + `cosine_similarity` |
-| 5 | `InternalClock` | `internal_clock.py:96` | `_clock` = added / last_checked / stale |
-| 6 | `_bump_access` | `asha_memory_v2.py:948` | increments `access_count`, logs `access_log`, promotes tier |
+| 1 | `recall()` dispatch | `asha_memory_v2.py:1255` | 9 modes |
+| 2 | `LRUCache` | `asha_memory_v2.py:225` | capacity 50, normalized key, invalidated on write |
+| 3 | `SQLite` candidates | `asha_memory_v2.py:1299` | `RELATED` via `node_index` + FTS5 `MATCH` fallback, `SEMANTIC` via `node_vectors` + `node_index` pre-filter + stored `magnitude`, etc. |
+| 4 | `TfidfVectorizer` | `asha_memory_v2.py:171` | `transform` + `cosine_similarity(mag_a, mag_b)` |
+| 5 | `InternalClock` | `internal_clock.py:99` | `_clock` = added / last_checked / stale |
+| 6 | `_bump_access` | `asha_memory_v2.py:1010` | batched `access_count` + `access_log` + tier promotion (P1-4 split transaction) |
 
-Fetch bound is inflated `max(bound*5, bound+25)` when `include_agent_notes=False` so scoped notes cannot crowd core recall (`asha_memory_v2.py:1174`).
+Fetch bound is inflated `max(bound*5, bound+25)` when `include_agent_notes=False` so scoped notes cannot crowd core recall (`asha_memory_v2.py:1255`).
+Recall uses two-phase transaction: read candidates first, then short write-batch for bumps (P1-4) preserving `last_accessed_before`.
 
 ### Agent Model
 
-`agent_memory_mode` (`asha_memory_v2.py:1660`) is `core_shared` (default, everything in `core.db`) or `legacy_shards` (per-agent `agents/agent_*.db` via `AGENT_SCHEMA_V2:556`). Maintenance respects the boundary: `BrainEngine.is_agent_note:145` mirrors `AshaMemory._is_core_visible:1211` — dedup/contradictions/links never cross it except via manual graduation.
+`agent_memory_mode` (`asha_memory_v2.py:78`) is `core_shared` (default, everything in `core.db`) or `legacy_shards` (per-agent `agents/agent_*.db` via `AGENT_SCHEMA_V2:509`). Maintenance respects the boundary: `BrainEngine.is_agent_note:176` mirrors `AshaMemory._is_core_visible` — dedup/contradictions/links never cross it except via manual graduation.
 
 **Single graph, two visibilities:**
 
@@ -300,10 +306,11 @@ core_verified (now visible in normal recall)
 ```
 dedup (0.85 cosine)
   -> compact (keep_last=3, TTL 7d)
+  -> agent_working (agent WORKING janitor, Score=acc*Wa+imp*Wi-ageH*Wd, high-water 12, max_age 48h)
   -> age_prune (4d, access <=2)
   -> tiers (promote / decay / prune)
-  -> contradictions (sentiment on FACT/PREFERENCE)
-  -> graduation (manual only)
+  -> contradictions (sentiment on FACT/PREFERENCE, filtered len>3+stopword)
+  -> graduation (per-node + bulk, manual only)
   -> discover (0.50-0.85 RELATES_TO)
   -> purge_orphans (after every job)
   -> vacuum (if freelist >50 and >15%)
@@ -312,19 +319,20 @@ dedup (0.85 cosine)
 
 | Step | Job | Threshold | File |
 |---|---|---|---|
-| 1 | `deduplicate` | cosine >= 0.85 | `brain/brain_engine.py:667` |
-| 2 | `compact_ephemeral_logs` | keep 3, TTL 7d | `brain/brain_engine.py:37` |
-| 3 | `prune_stale_unused_nodes` | `max_unused_days:4`, `access <=2` | `brain/brain_engine.py:920` |
-| 4 | `manage_tiers` | decay 0.97/0.995, prune floor 0.05 | `brain/brain_engine.py:804` |
-| 5 | `detect_contradictions` | sentiment + overlap | `brain/brain_engine.py:132` |
-| 6 | `graduate_agent_notes` | manual only | `brain/brain_engine.py:142` |
-| 7 | `discover_links` | 0.50-0.85 | `brain/brain_engine.py:154` |
-| — | `purge_orphans` | every job | `brain/brain_engine.py:1023` |
-| — | `vacuum_db` | freelist >50 and >15% | `brain/brain_engine.py:37` |
+| 1 | `deduplicate` | cosine >= 0.85 (bucketed) | `brain/brain_engine.py:768` |
+| 2 | `compact_ephemeral_logs` | keep 3, TTL 7d | `brain/brain_engine.py:1223` |
+| 3 | `regulate_agent_working_memory` | agent only `high_water:12`, `batch:5`, `max_age:48h`, `Wa1.5/Wi4.0/Wd0.15` | `brain/brain_engine.py:1117` |
+| 4 | `prune_stale_unused_nodes` | `max_unused_days:4`, `access <=2` | `brain/brain_engine.py:1215` |
+| 5 | `manage_tiers` | decay 0.97/0.995, prune floor 0.05 | `brain/brain_engine.py:930` |
+| 6 | `detect_contradictions` | sentiment + meaningful overlap `len>3` + not stopword | `brain/brain_engine.py:1546` |
+| 7 | `graduate_agent_notes` | per-node `node_ids` + bulk manual | `brain/brain_engine.py:2008` |
+| 8 | `discover_links` | 0.50-0.85 | `brain/brain_engine.py:2049` |
+| — | `purge_orphans` | every job (safety net — `PRAGMA foreign_keys=ON` now enforced) | `brain/brain_engine.py:1317` |
+| — | `vacuum_db` | freelist >50 and >15% | `brain/brain_engine.py:1391` |
 
-Every job snapshots before mutation (`create_snapshot:534`) and purges orphans (`purge_orphans:1023` — FK cascades are not enforced without `PRAGMA foreign_keys=ON`). Reports land in `brain/logs/*.md` + `job_history.json`.
+Every job snapshots before mutation (`create_snapshot:534`) and purges orphans (`purge_orphans:1121` — now a no-op safety net since `PRAGMA foreign_keys=ON` is enforced in `AshaMemory._core_conn:647` and `BrainEngine._connect_db`). Reports land in `brain/logs/*.md` + `job_history.json`.
 
-Scheduler canonical order (enforced): `dedup -> compact -> age_prune -> tiers -> contradictions -> graduation -> discover`, then `purge_orphans` + `vacuum` + `rebuild_vector_index`.
+Scheduler canonical order (enforced): `dedup -> compact -> agent_working -> age_prune -> tiers -> contradictions -> graduation -> discover`, then `purge_orphans` + `vacuum` + `rebuild_vector_index` (`scheduler.py:22`).
 
 ---
 
@@ -575,17 +583,17 @@ python brain/scheduler.py         # one-shot run (dedup + tiers)
 curl http://localhost:8500/api/health  # lightweight health check
 ```
 
-**Tabs:** Overview (DB switcher + health/bloat) · Maintenance (dedup/prune/tiers/contradictions/discover + `Run FULL` + `Compact Ephemeral` + `VACUUM`) · Graduate (manual-only) · Contradicts (pending/confirmed/ignored, `confirm/ignore/delete/keep_from/keep_to/merge`, auto-resolve) · Ephemeral (allowlist chips + candidate scan) · Graph/Manager (embedded `humantools` via `postMessage` + `/api/db_bytes`) · System (snapshots/audit logs/history) · Statistics (`get_full_statistics`) · Config (thresholds + toggles + `Check and Auto-VACUUM`).
+**Tabs:** Overview (DB switcher + health/bloat) · Maintenance (dedup/prune/tiers/contradictions/discover + `Run FULL` + `Compact Ephemeral` + `VACUUM`) · Graduate (per-node + bulk) · Observer (agent `WORKING` score/days_left) · Contradicts (pending/confirmed/ignored, filtered `len>3` + stopword, `confirm/ignore/delete/keep_from/keep_to/merge`, auto-resolve) · Ephemeral (allowlist chips + candidate scan) · Graph/Manager (embedded `humantools` via `postMessage` + `/api/db_bytes`) · System (snapshots/audit logs/history) · Statistics (`get_full_statistics`) · Config (thresholds + `Agent High-water/Demote batch/Max age/Wa/Wi/Wd` + toggles + `Check and Auto-VACUUM`).
 
-**Canonical job order** (enforced regardless of input): `dedup -> compact -> age_prune -> tiers -> contradictions -> graduation -> discover`, then `purge_orphans` + `vacuum` (if `freelist > 50` and `>15pct`) + `rebuild_vector_index` (if `auto_rebuild_vectors`).
+**Canonical job order** (enforced regardless of input): `dedup -> compact -> agent_working -> age_prune -> tiers -> contradictions -> graduation -> discover`, then `purge_orphans` + `vacuum` (if `freelist > 50` and `>15pct`) + `rebuild_vector_index` (if `auto_rebuild_vectors`).
 
-**Config** (`brain/brain_config.json:27`): `interval_minutes`, `auto_snapshot_before_jobs`, `dedup_similarity_threshold:0.85`, `prune_importance_floor:0.05`, `max_unused_days:4`, `ephemeral_labels/keep_last:3/max_age_days:7`, `vacuum_after_prune`, `vacuum_freelist_threshold_pct:15`, `vacuum_freelist_min_pages:50`, `contradiction_auto_resolve` + `low/high_trust:0.3/0.8`.
+**Config** (`brain/brain_config.json:27`): `interval_minutes`, `auto_snapshot_before_jobs`, `dedup_similarity_threshold:0.85`, `prune_importance_floor:0.05`, `max_unused_days:4`, `ephemeral_labels/keep_last:3/max_age_days:7`, `vacuum_after_prune`, `vacuum_freelist_threshold_pct:15`, `vacuum_freelist_min_pages:50`, `contradiction_auto_resolve` + `low/high_trust:0.3/0.8`, `agent_working_regulator_enabled/high_water:12/demote_batch:5/max_age:48h/Wa:1.5/Wi:4.0/Wd:0.15`.
 
 ---
 
 ## Configuration
 
-`AshaMemory` merges `DEFAULT_CONFIG:48` with `base_path/config.json` on startup (persisted via `_save_config`).
+`AshaMemory` merges `DEFAULT_CONFIG:62` with `base_path/config.json` on startup (persisted via `_save_config`). Brain `brain_config.json` is scheduler-only (`interval_minutes`, `auto_snapshot_before_jobs`, `dashboard_token`, `sqlite_cache_size`); shared thresholds live in core `config.json` (P2-2).
 
 ```python
 DEFAULT_CONFIG = {
@@ -595,12 +603,15 @@ DEFAULT_CONFIG = {
     "max_content_length": 500,
     "decay_factor_per_day": 0.99,
     "access_boost": 0.05,
-    "prune_threshold": 0.05,
+    "prune_threshold": 0.05,  # alias prune_importance_floor (brain) — kept in sync
+    "prune_importance_floor": 0.05,  # P2-2 alias
     "consolidation_similarity_high": 0.85,
     "consolidation_similarity_link": 0.50,
+    "consolidation_bucket_prefix": 4,   # P1-2 tunable
+    "consolidation_bucket_overlap": 2,  # P1-2 tunable
     "default_trust": 0.5,
     "default_importance": 0.5,
-    "agent_max_notes": 100,
+    "agent_max_notes": 100,  # P0-6 enforced
     "agent_max_content_length": 800,
     "agent_memory_mode": "core_shared",   # or "legacy_shards"
     "semantic_relevance_floor": 0.1,
@@ -610,6 +621,8 @@ DEFAULT_CONFIG = {
     "short_term_promote_after": 3,
     "long_term_promote_after": 15,
     "internal_clock": True,
+    "ephemeral_labels": sorted(DEFAULT_EPHEMERAL_LABELS),  # P0-3 unified (10)
+    "sqlite_cache_size": -64000,  # P1-1 configurable
 }
 ```
 
@@ -632,10 +645,10 @@ Open in any browser — no server required:
 
 ## Design Decisions
 
-* **No stemmer** — naive suffix stripping corrupted `education->educa`; IDF already separates variants and the stemmer diverged `RELATED` (stemmed) vs `SEMANTIC` (raw). `LEXICON_VERSION:105` is `3` (Unicode tokenizer + no stemmer + 2-letter stopwords).
-* **Shared tokenizer** — single `_tokenize:125` for keywords, Jaccard, sentiment, and TF-IDF; no regex drift.
-* **Version-gated vectorizer** — `_vectorizer_version:643` + check-then-set in `_load_vectorizer:744` prevents silent refresh under concurrent invalidation.
-* **Scoped notes excluded by default** — `find_across_agents` is explicit; `agent_review_queue` is the sanctioned inbox; `BrainEngine.is_agent_note:145` never merges/links across scopes.
+* **No stemmer** — naive suffix stripping corrupted `education->educa`; IDF already separates variants and the stemmer diverged `RELATED` (stemmed) vs `SEMANTIC` (raw). `LEXICON_VERSION` is `3` (`shared_lexicon.py:61`, re-exported `asha_memory_v2.py:121`).
+* **Shared tokenizer** — single `_tokenize` `shared_lexicon.py:23` (`_TOKEN_PATTERN` `shared_lexicon.py:21`) for keywords, Jaccard, sentiment, and TF-IDF; no regex drift.
+* **Version-gated vectorizer** — `_vectorizer_version` + check-then-set in `_load_vectorizer` prevents silent refresh under concurrent invalidation.
+* **Scoped notes excluded by default** — `find_across_agents` is explicit; `agent_review_queue` is the sanctioned inbox; `BrainEngine.is_agent_note:176` never merges/links across scopes.
 * **Graduation is manual-only** — promotion into core memory is a human/core decision, never part of scheduled maintenance.
 
 ---
@@ -644,8 +657,8 @@ Open in any browser — no server required:
 
 Implemented in v2 (see `docs/V2_ARCHITECTURE.md:3` for the full status note):
 
-* Done: TF-IDF semantic search, cosine consolidation, sentiment-weighted contradictions, tiered layers, `SEMANTIC/PATH/CLUSTER/TIMELINE`, cross-agent queries, Query DSL, LRU cache, JSON/GraphML export, profile/health, internal clock
-* Not implemented (intentionally deferred): optional local ONNX vectors, middleware hooks, `remember_many` batch insert, incremental DF counters (rebuilt on demand), agent-shard merging, cluster auto-summarization (removed as graph pollution — `brain/README-BRAIN.md:169`).
+* Done: TF-IDF semantic search, cosine consolidation, sentiment-weighted contradictions, tiered layers, `SEMANTIC/PATH/CLUSTER/TIMELINE`, cross-agent queries, Query DSL, LRU cache, JSON/GraphML export (`edgedefault="directed"`), `remember_many` batch `asha_memory_v2.py:1198` (P1-3), profile/health, internal clock, `PRAGMA foreign_keys=ON` + orphan purge
+* Not implemented (intentionally deferred): optional local ONNX vectors, middleware hooks, incremental DF counters (rebuilt on demand, deferred per `docs/V2_ARCHITECTURE.md:149`), agent-shard merging, cluster auto-summarization (removed as graph pollution — `brain/README.md:169`).
 
 ---
 
