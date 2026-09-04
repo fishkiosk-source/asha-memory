@@ -2077,6 +2077,53 @@ class BrainEngine:
             return {"status": "error", "message": "node_id required"}
         return self.graduate_agent_notes(node_ids=[node_id.strip()])
 
+    def demote_agent_notes(self, node_ids: List[str] = None) -> Dict[str, Any]:
+        """Demote review_ready notes back to agent_private (user rejects promotion).
+        Mirrors asha_memory_v2.agent_set_attention but via Brain direct DB access.
+        """
+        if not node_ids:
+            return {"status": "error", "message": "node_ids required"}
+        # dedupe + strip
+        wanted = [str(x).strip() for x in node_ids if str(x).strip()]
+        if not wanted:
+            return {"status": "error", "message": "no valid node_ids"}
+        conn = self._connect_db()
+        demoted = 0
+        skipped: List[Dict[str, str]] = []
+        demoted_ids: List[str] = []
+        try:
+            for nid in wanted:
+                row = conn.execute("SELECT node_id, metadata, node_type FROM nodes WHERE node_id = ?", (nid,)).fetchone()
+                if not row:
+                    skipped.append({"node_id": nid, "reason": "not found"})
+                    continue
+                if not self.is_agent_note(row):
+                    skipped.append({"node_id": nid, "reason": "not an agent note"})
+                    continue
+                meta = self._node_metadata(row)
+                att = meta.get("attention_state", "agent_private")
+                if att != "review_ready":
+                    skipped.append({"node_id": nid, "reason": f"not review_ready (is {att})"})
+                    continue
+                meta["attention_state"] = "agent_private"
+                meta["demoted_at"] = _now()
+                meta["demoted_by"] = "BrainEngine"
+                conn.execute("UPDATE nodes SET metadata = ?, updated_at = ? WHERE node_id = ?", (json.dumps(meta), _now(), nid))
+                demoted += 1
+                demoted_ids.append(nid)
+            conn.commit()
+            conn.close()
+            out: Dict[str, Any] = {"status": "success", "demoted": demoted, "demoted_ids": demoted_ids}
+            if skipped:
+                out["skipped"] = skipped
+            return out
+        except Exception as e:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return {"status": "error", "message": f"Demote failed: {str(e)}"}
+
     def discover_links(self) -> Dict[str, Any]:
         """
         Discovers latent semantic associations between unlinked nodes and creates RELATES_TO candidate links.

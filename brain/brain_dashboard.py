@@ -544,6 +544,25 @@ class BrainDashboardHandler(BaseHTTPRequestHandler):
                 self._send_json(res)
             except Exception as e:
                 self._send_json({"status": "error", "message": str(e)}, status=500)
+        elif path == "/api/demote":
+            try:
+                node_ids = None
+                if isinstance(payload, dict):
+                    if "node_ids" in payload and payload["node_ids"] is not None:
+                        v = payload["node_ids"]
+                        if isinstance(v, list):
+                            node_ids = [str(x).strip() for x in v if str(x).strip()]
+                        elif isinstance(v, str) and v.strip():
+                            node_ids = [v.strip()]
+                    elif "node_id" in payload and payload["node_id"]:
+                        node_ids = [str(payload["node_id"]).strip()]
+                if not node_ids:
+                    self._send_json({"status": "error", "message": "node_ids required"}, status=400)
+                else:
+                    res = engine.demote_agent_notes(node_ids=node_ids)
+                    self._send_json(res)
+            except Exception as e:
+                self._send_json({"status": "error", "message": str(e)}, status=500)
         elif path == "/api/regulate_agent_working":
             try:
                 dry = bool(payload.get("dry_run", False))
@@ -781,8 +800,9 @@ td.empty{color:#555;text-align:center;padding:32px 16px}
   <div id="grad-bulk-bar" style="display:none;padding:8px 16px;background:#1a2a1a;border-bottom:1px solid #2a4a2a;align-items:center;gap:8px;flex-wrap:wrap">
     <span id="grad-bulk-count" style="color:#8bf;font-size:12px">0 selected</span>
     <button class="btn small primary" onclick="doGraduateSelected()">Graduate Selected</button>
+    <button class="btn small danger" onclick="doDemoteSelected()">Demote to Private</button>
     <button class="btn small" onclick="gradClearSelection()">Clear</button>
-    <span style="font-size:11px;color:#666">Explicit selection graduates even private notes (manual review).</span>
+    <span style="font-size:11px;color:#666">Graduate even private; Demote removes review_ready → agent_private.</span>
   </div>
   <div class="table-wrap">
     <table><thead><tr><th style="width:28px"><input type="checkbox" id="grad-check-all" title="Select all"></th><th>Label</th><th>Content</th><th>Attention</th><th>Trust</th><th>Imp.</th><th>Updated</th><th>Action</th></tr></thead><tbody id="grad-tbody"><tr><td class="empty" colspan="8">Click Refresh to load preview</td></tr></tbody></table>
@@ -1101,9 +1121,25 @@ async function loadEphemeralCandidates(){
     const cand=d.candidates||[];
     if(!cand.length){tb.innerHTML='<tr><td class="empty" colspan="6">No candidates — no high-frequency telemetry-like labels found</td></tr>';return}
     tb.innerHTML=cand.map(c=>{
-      return '<tr><td class="mono">'+esc(c.label)+'</td><td>'+c.count+'</td><td>'+(c.json_ratio*100).toFixed(0)+'%</td><td>'+c.score+'</td><td style="font-size:11px;max-width:200px;white-space:normal">'+esc(c.reasons)+'</td><td><button class="btn small primary" onclick="addEphemeralLabel(\''+esc(c.label)+'\')">Add</button></td></tr>';
+      return '<tr><td class="mono">'+esc(c.label)+'</td><td>'+c.count+'</td><td>'+(c.json_ratio*100).toFixed(0)+'%</td><td>'+c.score+'</td><td style="font-size:11px;max-width:200px;white-space:normal">'+esc(c.reasons)+'</td><td><button class="btn small primary" onclick="addEphemeralLabel(\\''+esc(c.label)+'\\' )">Add</button></td></tr>';
     }).join('');
   }catch(e){tb.innerHTML='<tr><td class="empty" colspan="6">Failed: '+esc(e.message)+'</td></tr>'}
+}
+async function addEphemeralLabel(label){
+  if(label && typeof label==='string' && label.trim()){ label=label.trim(); } else { const inp=$('eph-custom'); if(!inp) return; label=inp.value.trim(); if(!label){showToast('Enter label'); return;} }
+  try{
+    const res=await authFetch('/api/ephemeral_allowlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'add', label})});
+    const d=await res.json();
+    if(d.status==='success'){ showToast('Added '+label); const inp=$('eph-custom'); if(inp && inp.value.trim()===label) inp.value=''; renderEphemeralAllowlist({ephemeral_labels:d.ephemeral_labels}); try{notifyManagerConfig(d.ephemeral_labels);}catch(e){} fetchStatus(); loadEphemeralCandidates(); } else showToast(d.message||'Add failed');
+  }catch(e){showToast('Add failed: '+e.message)}
+}
+async function removeEphemeralLabel(label){
+  if(!label || !confirm('Remove '+label+' from allowlist?')) return;
+  try{
+    const res=await authFetch('/api/ephemeral_allowlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'remove', label})});
+    const d=await res.json();
+    if(d.status==='success'){ showToast('Removed '+label); renderEphemeralAllowlist({ephemeral_labels:d.ephemeral_labels}); try{notifyManagerConfig(d.ephemeral_labels);}catch(e){} fetchStatus(); } else showToast(d.message||'Remove failed');
+  }catch(e){showToast('Remove failed: '+e.message)}
 }
 async function loadContradictions(){
   const status=$('contra-status') ? $('contra-status').value : 'pending';
@@ -1131,11 +1167,11 @@ async function loadContradictions(){
       const keepToCls = sug==='keep_to' ? 'btn small primary' : 'btn small';
       const isChecked = window.contraSel && window.contraSel[r.edge_id] ? 'checked' : '';
       return '<tr'+(sug?' style="background:rgba(52,211,153,0.06)"':'')+(isChecked?' style="background:#1a2a3a"':'')+'><td><input type="checkbox" data-cid="'+esc(r.edge_id)+'" '+isChecked+' onchange="contraToggle(this)"></td><td><span class="chip">'+conf+'</span> '+sugChip+'</td>'
-        +'<td><b>'+esc(r.from_label)+'</b> <span style="color:#666">('+esc(r.from_type)+' · trust '+fromTrust+')</span><br><span style="color:#888;font-size:11px;cursor:pointer" onclick="contraView(\''+esc(r.edge_id)+'\')" title="Click to view full text">'+esc(r.from_content.slice(0,70))+(r.from_content.length>70?'… <span style="color:#6af;text-decoration:underline">view</span>':'')+'</span></td>'
-        +'<td><b>'+esc(r.to_label)+'</b> <span style="color:#666">('+esc(r.to_type)+' · trust '+toTrust+')</span><br><span style="color:#888;font-size:11px;cursor:pointer" onclick="contraView(\''+esc(r.edge_id)+'\')" title="Click to view full text">'+esc(r.to_content.slice(0,70))+(r.to_content.length>70?'… <span style="color:#6af;text-decoration:underline">view</span>':'')+'</span></td>'
+        +'<td><b>'+esc(r.from_label)+'</b> <span style="color:#666">('+esc(r.from_type)+' · trust '+fromTrust+')</span><br><span style="color:#888;font-size:11px;cursor:pointer" onclick="contraView(\\''+esc(r.edge_id)+'\\')" title="Click to view full text">'+esc(r.from_content.slice(0,70))+(r.from_content.length>70?'… <span style="color:#6af;text-decoration:underline">view</span>':'')+'</span></td>'
+        +'<td><b>'+esc(r.to_label)+'</b> <span style="color:#666">('+esc(r.to_type)+' · trust '+toTrust+')</span><br><span style="color:#888;font-size:11px;cursor:pointer" onclick="contraView(\\''+esc(r.edge_id)+'\\')" title="Click to view full text">'+esc(r.to_content.slice(0,70))+(r.to_content.length>70?'… <span style="color:#6af;text-decoration:underline">view</span>':'')+'</span></td>'
         +'<td style="font-size:11px;max-width:120px;white-space:normal">'+esc(overlap)+'</td>'
         +'<td><span class="chip">'+esc(stat)+'</span></td>'
-        +'<td style="white-space:nowrap"><button class="btn small" onclick="contraAction(\''+r.edge_id+'\',\'confirm\')">Confirm</button> <button class="btn small" onclick="contraAction(\''+r.edge_id+'\',\'ignore\')">Ignore</button> <button class="btn small danger" onclick="contraAction(\''+r.edge_id+'\',\'delete\')">Delete</button><br><button class="'+keepFromCls+'" style="margin-top:3px" onclick="contraAction(\''+r.edge_id+'\',\'keep_from\')">Keep From</button> <button class="'+keepToCls+'" style="margin-top:3px" onclick="contraAction(\''+r.edge_id+'\',\'keep_to\')">Keep To</button> <button class="btn small" style="margin-top:3px" onclick="contraAction(\''+r.edge_id+'\',\'merge\')">Merge</button> <button class="btn small" style="margin-top:3px" onclick="contraView(\''+r.edge_id+'\')">View</button></td></tr>';
+        +'<td style="white-space:nowrap"><button class="btn small" onclick="contraAction(\\''+r.edge_id+'\\',\\'confirm\\')">Confirm</button> <button class="btn small" onclick="contraAction(\\''+r.edge_id+'\\',\\'ignore\\')">Ignore</button> <button class="btn small danger" onclick="contraAction(\\''+r.edge_id+'\\',\\'delete\\')">Delete</button><br><button class="'+keepFromCls+'" style="margin-top:3px" onclick="contraAction(\\''+r.edge_id+'\\',\\'keep_from\\')">Keep From</button> <button class="'+keepToCls+'" style="margin-top:3px" onclick="contraAction(\\''+r.edge_id+'\\',\\'keep_to\\')">Keep To</button> <button class="btn small" style="margin-top:3px" onclick="contraAction(\\''+r.edge_id+'\\',\\'merge\\')">Merge</button> <button class="btn small" style="margin-top:3px" onclick="contraView(\\''+r.edge_id+'\\')">View</button></td></tr>';
     }).join('');
     setTimeout(()=>{const ca=$("contra-check-all"); if(ca && !ca.dataset.bound){ca.dataset.bound="1"; ca.onchange=function(){const ch=this.checked; document.querySelectorAll("#contra-tbody input[data-cid]").forEach(cb=>{cb.checked=ch; if(ch) window.contraSel[cb.dataset.cid]=1; else delete window.contraSel[cb.dataset.cid];}); updateContraBulkBar();};}},0);
     updateContraBulkBar();
@@ -1221,7 +1257,7 @@ function renderStatus(data){
     if(data.snapshots&&data.snapshots.length){
       data.snapshots.slice(0,8).forEach(s=>{
         const tr=document.createElement('tr');const sizeMB=(s.size_bytes/(1024*1024)).toFixed(2);
-        tr.innerHTML='<td class="mono">'+esc(s.filename)+'</td><td>'+esc(s.created_at)+'</td><td>'+sizeMB+' MB</td><td><button class="btn small" onclick="restoreSnapshot(\''+esc(s.filename)+'\')">Restore</button> <button class="btn small danger" onclick="deleteSnapshot(\''+esc(s.filename)+'\')">Delete</button></td>';snapTbody.appendChild(tr);
+        tr.innerHTML='<td class="mono">'+esc(s.filename)+'</td><td>'+esc(s.created_at)+'</td><td>'+sizeMB+' MB</td><td><button class="btn small" onclick="restoreSnapshot(\\''+esc(s.filename)+'\\')">Restore</button> <button class="btn small danger" onclick="deleteSnapshot(\\''+esc(s.filename)+'\\')">Delete</button></td>';snapTbody.appendChild(tr);
       });
     } else snapTbody.innerHTML='<tr><td class="empty" colspan="4">No snapshots</td></tr>';
   }
@@ -1232,7 +1268,7 @@ function renderStatus(data){
     if(data.logs&&data.logs.length){
       data.logs.slice(0,8).forEach(l=>{
         const tr=document.createElement('tr');const sizeKB=(l.size_bytes/1024).toFixed(1);
-        tr.innerHTML='<td class="mono">'+esc(l.filename)+'</td><td>'+esc(l.created_at)+'</td><td><button class="btn small" onclick="viewLog(\''+esc(l.filename)+'\')">View</button></td>';logsTbody.appendChild(tr);
+        tr.innerHTML='<td class="mono">'+esc(l.filename)+'</td><td>'+esc(l.created_at)+'</td><td><button class="btn small" onclick="viewLog(\\''+esc(l.filename)+'\\')">View</button></td>';logsTbody.appendChild(tr);
       });
     } else logsTbody.innerHTML='<tr><td class="empty" colspan="4">No audit logs yet</td></tr>';
   }
@@ -1244,7 +1280,7 @@ function renderStatus(data){
       histData.slice(-5).reverse().forEach(entry=>{
         const tr=document.createElement('tr');
         const jobsStr=(entry.job_types||[]).join(', ');
-        const mdLog=entry.markdown_log?'<a href="#" style="color:#8bf" onclick="viewLog(\''+esc(entry.markdown_log)+'\');return false">'+esc(entry.markdown_log)+'</a>':'<span style="color:#555">—</span>';
+        const mdLog=entry.markdown_log?'<a href="#" style="color:#8bf" onclick="viewLog(\\''+esc(entry.markdown_log)+'\\');return false">'+esc(entry.markdown_log)+'</a>':'<span style="color:#555">—</span>';
         if(id==='ov-history'){
           tr.innerHTML='<td>'+esc(entry.timestamp)+'</td><td><span class="chip">'+esc(jobsStr)+'</span></td><td>'+esc(entry.duration_seconds)+'s</td><td>'+mdLog+'</td>';
         } else {
@@ -1442,6 +1478,27 @@ async function doGraduateOne(node_id){
   else if(d.status==='success' && !d.graduated) showToast('Not graduated — ' + (d.skipped? d.skipped[0]?.reason : 'already verified or not found'));
   else showToast(d.message||'Graduate failed');
 }
+async function doDemoteOne(node_id){
+  if(!node_id) return;
+  if(!confirm('Demote this note ('+node_id.slice(0,12)+'… ) from review_ready → agent_private?')) return;
+  const res=await authFetch('/api/demote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({node_ids: [node_id]})});
+  const d=await res.json();
+  if(d.status==='success' && d.demoted) {showToast('Demoted '+node_id.slice(0,12)); loadGraduatePreview(); fetchStatus();}
+  else if(d.status==='success' && !d.demoted) showToast('Not demoted — ' + (d.skipped? d.skipped[0]?.reason : 'not review_ready'));
+  else showToast(d.message||'Demote failed');
+}
+async function doDemoteSelected(){
+  const ids=Object.keys(window.gradSel||{});
+  if(!ids.length){showToast('No notes selected'); return;}
+  if(!confirm('Demote '+ids.length+' selected note(s) from review_ready → agent_private?')) return;
+  const res=await authFetch('/api/demote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({node_ids: ids})});
+  const d=await res.json();
+  if(d.status==='success'){
+    let msg='Demoted '+ (d.demoted||0)+' / '+ids.length;
+    if(d.skipped && d.skipped.length) msg+=' — skipped '+d.skipped.length+' (not review_ready)';
+    showToast(msg); gradClearSelection(); loadGraduatePreview(); fetchStatus();
+  } else showToast(d.message||'Demote failed');
+}
 async function loadGraduatePreview(){
   const tb=$('grad-tbody');tb.innerHTML='<tr><td class="empty" colspan="8">Loading…</td></tr>';
   try{
@@ -1458,9 +1515,10 @@ async function loadGraduatePreview(){
       const c=esc((r.content||'').slice(0,100));const att=esc(r.attention||'');
       const nid=esc(r.node_id||'');
       const isChecked = window.gradSel && window.gradSel[r.node_id] ? 'checked' : '';
+      const demoteBtn = (r.attention==='review_ready') ? ' <button class="btn small" style="margin-left:4px" onclick="doDemoteOne(\\''+nid+'\\')">Demote</button>' : '';
       return '<tr><td><input type="checkbox" data-nid="'+nid+'" '+isChecked+' onchange="gradToggle(this)"></td>'
         +'<td class="mono" title="'+nid+'">'+esc(r.label)+'</td><td title="'+esc(r.content||'')+'">'+c+'</td><td><span class="chip">'+att+'</span></td><td>'+(r.trust_level!=null?Number(r.trust_level).toFixed(2):'-')+'</td><td>'+(r.importance!=null?Number(r.importance).toFixed(2):'-')+'</td><td>'+ago(r.updated_at)+'</td>'
-        +'<td><button class="btn small primary" onclick="doGraduateOne(\''+nid+'\')">Graduate</button></td></tr>';
+        +'<td><button class="btn small primary" onclick="doGraduateOne(\\''+nid+'\\')">Graduate</button>'+demoteBtn+'</td></tr>';
     }).join('');
     // wire select all for graduate
     setTimeout(()=>{
