@@ -130,10 +130,15 @@ def _looks_like_json_log(content: str) -> bool:
     if not content:
         return False
     s = content.lstrip()
-    if not s.startswith("{"):
+    # handle prefix like "moltbook_heartbeat result={...}" — find first '{' within first 60 chars
+    idx = s.find("{")
+    if idx == -1 or idx > 60:
         return False
-    low = s[:400].lower()
-    return ("timestamp" in low and ("status" in low or "post_count" in low or "load1m" in low))
+    low = s[idx:idx+600].lower()
+    if "timestamp" not in low:
+        return False
+    # telemetry indicators — original (status/post_count/load1m) plus common JSON log keys (event/runtime)
+    return any(k in low for k in ("status", "post_count", "load1m", "load5m", "event", "runtime", "target_db", "duration"))
 
 
 def _sanitize_fts_query(query: str) -> str:
