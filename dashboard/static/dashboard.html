@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<!-- dashboard/static/dashboard.html — v3 shell + tab loader (no CDN, no iframe, no sql.js). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASHA Memory v3</title>
+<style>
+:root{color-scheme:dark}
+body{background:#0d1117;color:#c9d1d9;font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;padding:0 16px 40px;max-width:1440px;margin-inline:auto}
+header{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:14px 0 12px;border-bottom:1px solid #30363d;position:sticky;top:0;z-index:20;background:#0d1117}
+h1{letter-spacing:-.02em}
+.pill{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:3px 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:2px}
+.on{background:#3fb950;box-shadow:0 0 6px #3fb950}.off{background:#f85149}
+#status{color:#8b949e;font-size:12px;margin:8px 0;letter-spacing:.01em}
+#statsbar{display:flex;gap:12px 18px;flex-wrap:wrap;font-size:13px;margin:8px 0 14px;padding:8px 12px;background:#161b22;border:1px solid #21262d;border-radius:8px}
+#statsbar b{color:#58a6ff}
+nav#tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;padding-bottom:4px;border-bottom:1px solid #21262d}
+nav#tabs button{background:#161b22;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:7px 12px;cursor:pointer;font-weight:500;transition:.15s}
+nav#tabs button:hover{border-color:#58a6ff;color:#fff}
+nav#tabs button.active{background:#1f6feb;border-color:#1f6feb;color:#fff;box-shadow:0 1px 8px rgba(31,111,235,.35)}
+.badge{background:#f85149;color:#fff;border-radius:9px;font-size:11px;padding:1px 6px;margin-left:5px;vertical-align:middle}
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:14px;margin:0 0 14px;box-shadow:0 1px 0 rgba(0,0,0,.2)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{border:1px solid #2a313b;padding:6px 9px;text-align:left;vertical-align:top}
+th{background:#1c2128;font-weight:600;letter-spacing:.01em}
+tr.sel{background:#1c2b45}
+.btn{background:#238636;color:#fff;border:none;border-radius:6px;padding:7px 14px;cursor:pointer;margin:2px;font-weight:500;transition:.15s}
+.btn:hover{filter:brightness(1.08)}
+.btn.warn{background:#9e6a03}.btn.danger{background:#da3633}.btn.ghost{background:#21262d;border:1px solid #30363d}
+.btn.ghost:hover{background:#30363d}
+input,select,textarea{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:6px 9px;transition:.15s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#58a6ff;box-shadow:0 0 0 3px rgba(88,166,255,.15)}
+textarea{width:100%;min-height:70px}
+#toast{position:fixed;bottom:16px;right:16px;background:#1f6feb;color:#fff;padding:9px 14px;border-radius:8px;display:none;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px)}
+#modal>div{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:18px;max-width:640px;width:92%;max-height:85vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+#tokenbar{display:none;background:#3b2300;border:1px solid #9e6a03;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:13px}
+.sec{border-left:3px solid #30363d;border-top:none;margin:14px 0 0;padding:10px 0 0 14px;border-radius:2px}
+.sec:nth-of-type(1){border-left-color:#ffab70}.sec:nth-of-type(2){border-left-color:#79c0ff}.sec:nth-of-type(3){border-left-color:#7ee787}
+.sec:nth-of-type(4){border-left-color:#d2a8ff}.sec:nth-of-type(5){border-left-color:#ffab70}.sec:nth-of-type(6){border-left-color:#e3b341}
+.sec:nth-of-type(7){border-left-color:#ff7eb6}.sec:nth-of-type(8){border-left-color:#58a6ff}.sec:nth-of-type(9){border-left-color:#8b949e}
+.sec h4{margin:0 0 4px;color:#e6edf3;font-size:13px;letter-spacing:.01em}
+.fdesc{color:#8b949e;font-size:12px;display:block;margin:2px 0 10px;max-width:640px;line-height:1.4}
+.frow{display:inline-block;margin:0 18px 12px 0;vertical-align:top}
+.tag{display:inline-block;border-radius:9px;font-size:11px;padding:2px 9px;margin:1px;font-weight:600;letter-spacing:.01em}
+.tag.green{background:#12361f;color:#7ee787;border:1px solid #1f4a2a}.tag.red{background:#3d1113;color:#ffa198;border:1px solid #5a1a1a}
+.tag.amber{background:#3b2300;color:#ffce4d;border:1px solid #5a3d0a}.tag.blue{background:#0f2a4d;color:#79c0ff;border:1px solid #1a3d6b}
+.tag.grey{background:#21262d;color:#c9d1d9;border:1px solid #30363d}
+.bar{height:8px;background:#21262d;border-radius:4px;min-width:80px;overflow:hidden}
+.bar>i{display:block;height:8px;background:linear-gradient(90deg,#1f6feb,#58a6ff);border-radius:4px}
+table.plain td,table.plain th{border:none;border-bottom:1px solid #21262d}
+canvas#graphcanvas{width:100%;height:520px;background:#0d1117;border:1px solid #30363d;border-radius:8px}
+.muted{color:#8b949e;font-size:12px}
+/* vibrant layer badges — Manager + anywhere */
+.layer-badge{display:inline-block;padding:2px 9px;border-radius:12px;font-size:11px;font-weight:700;letter-spacing:.02em;border:1px solid transparent}
+.layer-working{background:#3b2e12;color:#ffb86c;border-color:#5a3d0a;box-shadow:0 0 8px rgba(255,172,106,.15)}
+.layer-short_term{background:#0f2a4d;color:#79c0ff;border-color:#1a3d6b;box-shadow:0 0 8px rgba(121,192,255,.15)}
+.layer-long_term{background:#12361f;color:#7ee787;border-color:#1f4a2a;box-shadow:0 0 8px rgba(126,231,135,.15)}
+.layer-archive{background:#2a1a3a;color:#d2a8ff;border-color:#3d2a5a;box-shadow:0 0 8px rgba(210,168,255,.15)}
+/* modern toggle */
+.switch{position:relative;display:inline-block;width:38px;height:22px;vertical-align:middle;margin-right:8px}
+.switch input{opacity:0;width:0;height:0}
+.switch .slider{position:absolute;cursor:pointer;inset:0;background:#21262d;border:1px solid #30363d;border-radius:22px;transition:.2s}
+.switch .slider:before{position:absolute;content:"";height:16px;width:16px;left:2px;bottom:2px;background:#8b949e;border-radius:50%;transition:.2s}
+.switch input:checked+.slider{background:#238636;border-color:#238636}
+.switch input:checked+.slider:before{transform:translateX(16px);background:#fff}
+.switch input:focus+.slider{box-shadow:0 0 0 3px rgba(35,134,54,.25)}
+</style>
+</head>
+<body>
+<header>
+<h1 style="margin:0;font-size:20px">ASHA Brain <span class="muted">v3</span></h1>
+<span class="pill" id="pill-core">core.db</span>
+<span class="pill" id="pill-agents">agents.db</span>
+<span class="pill" id="pill-sched"><span class="dot off" id="sched-dot"></span><span id="sched-txt">Scheduler ?</span></span>
+<button class="btn ghost" onclick="App.refresh()">Refresh</button>
+<button class="btn ghost" id="authbtn" onclick="App.authBtn()">Login</button>
+</header>
+<div id="tokenbar">API token required. <button class="btn" onclick="App.login()">Login</button></div>
+<div id="status">Loading…</div>
+<div id="statsbar"></div>
+<nav id="tabs"></nav>
+<div id="panel"></div>
+<div id="toast"></div>
+<div id="modal"><div id="modal-body"></div></div>
+<script src="/static/app.js"></script>
+<script src="/static/modules/overview.js"></script>
+<script src="/static/modules/maintenance.js"></script>
+<script src="/static/modules/graduate.js"></script>
+<script src="/static/modules/observer.js"></script>
+<script src="/static/modules/core_helper.js"></script>
+<script src="/static/modules/contradicts.js"></script>
+<script src="/static/modules/ephemeral.js"></script>
+<script src="/static/modules/graph.js"></script>
+<script src="/static/modules/manager.js"></script>
+<script src="/static/modules/system.js"></script>
+<script src="/static/modules/statistics.js"></script>
+<script src="/static/modules/config.js"></script>
+<script src="/static/modules/mail.js"></script>
+</body>
+</html>

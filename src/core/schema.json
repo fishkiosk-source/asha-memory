@@ -1,0 +1,39 @@
+{
+  "_note": "Schema-as-code for core.db (Idea.md rev8 §3.1/C13/§13.3 + build ruling C19). Single source of DDL: migrate.py executes these statements, never inline SQL. Base = v2 CORE_SCHEMA_V2 except three documented deviations: (1) edges CHECK gains PROMOTED_FROM (bridge provenance, §6.2); (2) memory_layers default 'short_term'->'working' (fixes v2 divergence where DDL said short_term but _init_node_layer wrote working); (3) node_fts is INTERNAL-content fts5(label, content, node_id UNINDEXED) instead of v2 external-content (content='nodes'). Reason (C19, proven on sqlite 3.50.4): external-content FTS deletes are broken on this build — the documented 'delete'-command corrupts ('database disk image is malformed') and plain DELETE silently no-ops — while internal-content DELETE works and integrity holds. v2 inherits this latent bug (its nodes_ad/au triggers); v3 does not. Cost: label+content duplicated in the index; correctness first. Additions vs v2: ephemeral_events table (telemetry out of graph, C13), vector_df + vector_meta (incremental df/ndocs, §9.1), five new indexes (§13.3). node_vectors.vector TEXT holds compact 'term:weight' text (Phase 2 decision, see vectors.py) instead of v2 JSON dicts.",
+  "user_version": 4,
+  "lexicon_version": 3,
+  "tables": {
+    "nodes": "CREATE TABLE IF NOT EXISTS nodes (node_id TEXT PRIMARY KEY, node_type TEXT NOT NULL, label TEXT NOT NULL, content TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'CORE', trust_level REAL NOT NULL DEFAULT 0.5 CHECK (trust_level >= 0 AND trust_level <= 1), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, access_count INTEGER NOT NULL DEFAULT 0, importance REAL NOT NULL DEFAULT 0.5 CHECK (importance >= 0 AND importance <= 1), checksum TEXT NOT NULL, metadata TEXT NOT NULL DEFAULT '{}', CHECK (node_type IN ('PERSON','TOPIC','EVENT','FACT','PREFERENCE','BOUNDARY','AFFECT','AGENT_NOTE','CORE_REF','SKILL')))",
+    "edges": "CREATE TABLE IF NOT EXISTS edges (edge_id TEXT PRIMARY KEY, from_node TEXT NOT NULL REFERENCES nodes(node_id) ON DELETE CASCADE, to_node TEXT NOT NULL REFERENCES nodes(node_id) ON DELETE CASCADE, edge_type TEXT NOT NULL, weight REAL NOT NULL DEFAULT 1.0 CHECK (weight >= -1 AND weight <= 1), created_at INTEGER NOT NULL, metadata TEXT NOT NULL DEFAULT '{}', CHECK (edge_type IN ('RELATES_TO','CONTRADICTS','SUPPORTS','CAUSED_BY','PART_OF','TRUSTS','DISTRUSTS','REMEMBERS','HAS_PREFERENCE','HAS_BOUNDARY','HAS_AFFECT','HAS_SKILL','REFERS_TO','SUMMARIZES','PROMOTED_FROM')), UNIQUE(from_node, to_node, edge_type))",
+    "node_fts": "CREATE VIRTUAL TABLE IF NOT EXISTS node_fts USING fts5(label, content, node_id UNINDEXED)",
+    "node_index": "CREATE TABLE IF NOT EXISTS node_index (word TEXT NOT NULL, node_id TEXT NOT NULL REFERENCES nodes(node_id) ON DELETE CASCADE, field TEXT NOT NULL DEFAULT 'content', weight REAL NOT NULL DEFAULT 1.0, PRIMARY KEY (word, node_id, field))",
+    "access_log": "CREATE TABLE IF NOT EXISTS access_log (log_id INTEGER PRIMARY KEY AUTOINCREMENT, node_id TEXT NOT NULL REFERENCES nodes(node_id) ON DELETE CASCADE, accessed_at INTEGER NOT NULL)",
+    "schema_meta": "CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "node_vectors": "CREATE TABLE IF NOT EXISTS node_vectors (node_id TEXT PRIMARY KEY REFERENCES nodes(node_id) ON DELETE CASCADE, vector TEXT NOT NULL, magnitude REAL NOT NULL DEFAULT 0.0)",
+    "memory_layers": "CREATE TABLE IF NOT EXISTS memory_layers (node_id TEXT PRIMARY KEY REFERENCES nodes(node_id) ON DELETE CASCADE, layer TEXT NOT NULL DEFAULT 'working', promoted_at INTEGER, layer_order INTEGER NOT NULL DEFAULT 1, CHECK (layer IN ('working','short_term','long_term','archive')))",
+    "query_log": "CREATE TABLE IF NOT EXISTS query_log (log_id INTEGER PRIMARY KEY AUTOINCREMENT, query_text TEXT NOT NULL, mode TEXT NOT NULL, result_count INTEGER NOT NULL DEFAULT 0, duration_ms REAL NOT NULL DEFAULT 0, cache_hit INTEGER NOT NULL DEFAULT 0, queried_at INTEGER NOT NULL)",
+    "ephemeral_events": "CREATE TABLE IF NOT EXISTS ephemeral_events (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, metadata TEXT NOT NULL DEFAULT '{}')",
+    "vector_df": "CREATE TABLE IF NOT EXISTS vector_df (term TEXT PRIMARY KEY, df INTEGER NOT NULL DEFAULT 0)",
+    "vector_meta": "CREATE TABLE IF NOT EXISTS vector_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+  },
+  "_note_triggers": "C20: nodes_au is AFTER UPDATE OF label, content — access bumps (access_count/updated_at) must NOT reindex FTS. Proven: full-row trigger cost 153ms per 175 bumps vs 1.2ms scoped (sqlite 3.50.4, internal-content FTS). v2's external trigger is only 'fast' because its delete half silently no-ops (C19).",
+  "triggers": [
+    "CREATE TRIGGER IF NOT EXISTS nodes_ai AFTER INSERT ON nodes BEGIN INSERT INTO node_fts(label, content, node_id) VALUES (new.label, new.content, new.node_id); END",
+    "CREATE TRIGGER IF NOT EXISTS nodes_ad AFTER DELETE ON nodes BEGIN DELETE FROM node_fts WHERE node_id = old.node_id; END",
+    "CREATE TRIGGER IF NOT EXISTS nodes_au AFTER UPDATE OF label, content ON nodes BEGIN DELETE FROM node_fts WHERE node_id = old.node_id; INSERT INTO node_fts(label, content, node_id) VALUES (new.label, new.content, new.node_id); END"
+  ],
+  "indexes": [
+    "CREATE INDEX IF NOT EXISTS idx_nodes_label_type ON nodes(label, node_type)",
+    "CREATE INDEX IF NOT EXISTS idx_nodes_updated_access ON nodes(updated_at, access_count)",
+    "CREATE INDEX IF NOT EXISTS idx_nodes_source ON nodes(source)",
+    "CREATE INDEX IF NOT EXISTS idx_memory_layers_layer ON memory_layers(layer)",
+    "CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_node)",
+    "CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_node)",
+    "CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(node_type)",
+    "CREATE INDEX IF NOT EXISTS idx_node_index_word ON node_index(word)",
+    "CREATE INDEX IF NOT EXISTS idx_access_log_node_time ON access_log(node_id, accessed_at)",
+    "CREATE INDEX IF NOT EXISTS idx_node_vectors_mag ON node_vectors(magnitude)",
+    "CREATE INDEX IF NOT EXISTS idx_query_log_time_mode ON query_log(queried_at, mode)",
+    "CREATE INDEX IF NOT EXISTS idx_ephemeral_label_time ON ephemeral_events(label, created_at)"
+  ]
+}
